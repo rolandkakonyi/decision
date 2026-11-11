@@ -67,10 +67,16 @@ is 30 seconds, and requests are not automatically retried.
 ## Images and Box
 
 ```bash
-decision noul 'Is a person visible?' --image door=door.png --model jev-1.14.0
-decision box 'Locate the package in images.door' --image door=door.png --model jev-1.14.0
-decision run /private/request.json --image door=door.png --image badge=badge.jpg --json
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --model jev-1.14.0 \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision noul 'Is the dog in images.dog a French bulldog?' --image dog=dog.jpg --model jev-1.14.0
+decision box 'Locate the dog in images.dog' --image dog=dog.jpg --model jev-1.14.0
 ```
+
+Read `references/examples.md` for worked Choice, Noul, Score, Box, `ask`, and
+`run` examples. The option key before `=` is returned in a Choice answer; the
+text after `=` describes it. A Choice selects one of the offered options.
 
 Repeat `--image [NAME=]PATH` for several images. Unnamed images are called
 `image`, `image_2`, and so on. Flag images are attached under `state.images`;
@@ -157,6 +163,9 @@ already-sent provider request; its timeout still bounds it.
   CLI requests additionally accept local image path descriptors.
 - `references/request.json`: synthetic batch example; copy it before editing.
 - `references/images.json`: image/Box CLI template; supply your own PNG/JPEG file.
+- `references/examples.md`: worked commands for all four question types and batches.
+- `references/dog-request.json`: all four types sharing a dog image; put beside dog.jpg.
+- `references/dog-questions.json`: the same questions for `ask --image dog=dog.jpg`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 

@@ -48,10 +48,35 @@ stay structured. Diagnostics go to stderr; requests are not automatically retrie
 ## Images and Box
 
 ```bash
-decision noul 'Is a person visible?' --image camera=door.png --model jev-1.14.0
-decision box 'Locate the package in images.camera' --image camera=door.png --model jev-1.14.0
-decision run request.json --image camera=door.png --image badge=badge.jpg --json
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg \
+  --option french_bulldog='French bulldog' \
+  --option english_bulldog='English bulldog' \
+  --model jev-1.14.0
+
+decision noul 'Is the dog in images.dog a French bulldog?' \
+  --image dog=dog.jpg --model jev-1.14.0
+
+decision score 'How clearly is the face of the dog in images.dog visible?' \
+  --image dog=dog.jpg \
+  --level 'The face is not visible' \
+  --level 'The face is partly visible or obscured' \
+  --level 'The entire face is clearly visible' \
+  --model jev-1.14.0
+
+decision box 'Locate the dog in images.dog' \
+  --image dog=dog.jpg --model jev-1.14.0
 ```
+
+The key before `=` in each `--option` is returned in the answer; the text after
+it describes that option. Add `--json` for machine-readable output. Choice
+always selects an offered option; add `--option other='Another breed or no identifiable dog'`
+if that outcome is allowed.
+
+See the [worked examples](skills/decision/references/examples.md) for all four
+question types, multiple images, previews, `ask`, `run`, and MCP. The generated
+[dog request](skills/decision/references/dog-request.json) asks all four question
+types over one image; copy it beside your own `dog.jpg` before running it.
 
 `--image [NAME=]PATH` can be repeated. Images are added under `state.images`,
 keeping existing JSON object fields. Scalar state is retained as `state.context`;

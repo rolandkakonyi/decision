@@ -73,10 +73,16 @@ is 30 seconds, and requests are not automatically retried.
 ## Images and Box
 
 ```bash
-decision noul 'Is a person visible?' --image door=door.png --model jev-1.14.0
-decision box 'Locate the package in images.door' --image door=door.png --model jev-1.14.0
-decision run /private/request.json --image door=door.png --image badge=badge.jpg --json
+decision choice 'Which breed is the dog in images.dog?' \\
+  --image dog=dog.jpg --model jev-1.14.0 \\
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision noul 'Is the dog in images.dog a French bulldog?' --image dog=dog.jpg --model jev-1.14.0
+decision box 'Locate the dog in images.dog' --image dog=dog.jpg --model jev-1.14.0
 ```
+
+Read `references/examples.md` for worked Choice, Noul, Score, Box, `ask`, and
+`run` examples. The option key before `=` is returned in a Choice answer; the
+text after `=` describes it. A Choice selects one of the offered options.
 
 Repeat `--image [NAME=]PATH` for several images. Unnamed images are called
 `image`, `image_2`, and so on. Flag images are attached under `state.images`;
@@ -163,6 +169,9 @@ already-sent provider request; its timeout still bounds it.
   CLI requests additionally accept local image path descriptors.
 - `references/request.json`: synthetic batch example; copy it before editing.
 - `references/images.json`: image/Box CLI template; supply your own PNG/JPEG file.
+- `references/examples.md`: worked commands for all four question types and batches.
+- `references/dog-request.json`: all four types sharing a dog image; put beside dog.jpg.
+- `references/dog-questions.json`: the same questions for `ask --image dog=dog.jpg`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 
@@ -191,6 +200,143 @@ IMAGE_EXAMPLE = {
         "location": {"type": "box", "instructions": "Locate the package in photo"},
     },
 }
+
+DOG_EXAMPLE = {
+    "model": "jev-1.14.0",
+    "state": {"images": {"dog": "<dog-photo>"}},
+    "assets": {"<dog-photo>": {"path": "dog.jpg"}},
+    "questions": {
+        "dog_present": {"type": "noul", "instructions": "Is a dog visible in images.dog?"},
+        "breed": {
+            "type": "choice", "instructions": "Which breed is the dog in images.dog?",
+            "criteria": {"french_bulldog": "French bulldog", "english_bulldog": "English bulldog"},
+        },
+        "face_visibility": {
+            "type": "score", "instructions": "How clearly is the face of the dog in images.dog visible?",
+            "criteria": ["The face is not visible", "The face is partly visible or obscured", "The entire face is clearly visible"],
+        },
+        "dog_location": {"type": "box", "instructions": "Locate the dog in images.dog"},
+    },
+}
+
+EXAMPLES_GUIDE = '''# Worked examples
+
+Use your own PNG or JPEG image named `dog.jpg`. Image limits and provider
+settings are described in SKILL.md. These commands use Jev 1.14 explicitly.
+Output is human-readable by default; append `--json` for structured output.
+
+## Choice: select a breed
+
+```bash
+decision choice 'Which breed is the dog in images.dog?' \\
+  --image dog=dog.jpg \\
+  --option french_bulldog='French bulldog' \\
+  --option english_bulldog='English bulldog' \\
+  --model jev-1.14.0
+```
+
+`--image dog=dog.jpg` makes the picture available as `images.dog`. Each
+`--option NAME=DESCRIPTION` defines a returned key and its description.
+The selected key is `french_bulldog` or `english_bulldog`, with probabilities
+for both. A Choice always selects one of its options; if other breeds should
+be possible, add `--option other='Another breed or no identifiable dog'`.
+
+## Noul: ask a yes/no question
+
+```bash
+decision noul 'Is the dog in images.dog a French bulldog?' \\
+  --image dog=dog.jpg --model jev-1.14.0
+```
+
+Returns the probability of yes, from 0 to 1, shown as a percentage in human
+output. This is one judgment rather than a choice between breed labels.
+
+## Score: evaluate ordered levels
+
+```bash
+decision score 'How clearly is the face of the dog in images.dog visible?' \\
+  --image dog=dog.jpg \\
+  --level 'The face is not visible' \\
+  --level 'The face is partly visible or obscured' \\
+  --level 'The entire face is clearly visible' \\
+  --model jev-1.14.0
+```
+
+Levels are ordered from 0 in the order supplied. This rubric ranges from 0 to
+2; the expected score can fall between levels. The response includes the level
+probabilities and confidence.
+
+## Box: locate the dog
+
+```bash
+decision box 'Locate the dog in images.dog' \\
+  --image dog=dog.jpg --model jev-1.14.0
+```
+
+Returns left, top, right, and bottom as fractions of image dimensions, plus
+confidence. Box requires Jev 1.14 and returns a location even when the target
+is absent; pair it with a presence Noul when absence matters.
+
+## Run: all four types in one request
+
+Copy `references/dog-request.json` beside your `dog.jpg`, naming the copy
+`dog-request.json`, then run:
+
+```bash
+decision run dog-request.json --json
+```
+
+This asks presence, breed, face visibility, and location together. The image is
+uploaded once, with answers keyed by `dog_present`, `breed`, `face_visibility`,
+and `dog_location`. Questions are independent; use application code to decide
+when to use the breed or location answer. Image paths inside request JSON are
+relative to that JSON file.
+
+## Ask: reuse a questions file with another image
+
+Copy `references/dog-questions.json` to `dog-questions.json` and run:
+
+```bash
+decision ask --questions-file dog-questions.json \\
+  --image dog=dog.jpg --model jev-1.14.0 --json
+```
+
+The questions file contains only the named questions object. You can change
+the image path without editing the questions. Add `--state` or `--state-file`
+for extra shared context; image-only state works too.
+
+## Compare two images
+
+```bash
+decision noul 'Do images.before and images.after show the same dog?' \\
+  --image before=before.jpg --image after=after.jpg --model jev-1.14.0
+```
+
+Repeat `--image NAME=PATH` for distinct images, and refer to each by its name.
+
+## Preview and JSON output
+
+```bash
+decision run dog-request.json --dry-run
+decision run dog-request.json --dry-run --json
+```
+
+Previews validate the selected files and request without calling a provider.
+Add `--json` to any query command for JSON answers instead of human output.
+For a text-only example:
+
+```bash
+decision noul 'Does the message request a refund?' \\
+  --state 'Please refund my order.'
+```
+
+## MCP
+
+The same batch can be sent to `evaluate`. Replace the path descriptor in
+`dog-request.json` with `{"data_base64": "...", "format": "jpeg"}` using the
+image's actual bytes. MCP accepts base64 assets, not local file paths, and
+returns structured answers regardless of the CLI output preference.
+'''
 
 
 def command_reference(cli):
@@ -221,6 +367,9 @@ def skill_files(cli, version, schema):
         "SKILL.md": GUIDANCE.replace("@VERSION@", version),
         "references/request.json": json.dumps(EXAMPLE, indent=2) + "\n",
         "references/images.json": json.dumps(IMAGE_EXAMPLE, indent=2) + "\n",
+        "references/examples.md": EXAMPLES_GUIDE,
+        "references/dog-request.json": json.dumps(DOG_EXAMPLE, indent=2) + "\n",
+        "references/dog-questions.json": json.dumps(DOG_EXAMPLE["questions"], indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
         "references/cli-help.txt": command_reference(cli),
     }
