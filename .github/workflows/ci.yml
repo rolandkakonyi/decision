@@ -6,16 +6,78 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  source:
+    name: Source (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: ubuntu-latest
+            python: '3.14'
+          - os: macos-latest
+            python: '3.14'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+          cache-suffix: source-${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run --locked decision skill --output skills/decision --check
+      - run: uv run --locked python -m unittest discover -s tests -v
+
+  wheel:
+    name: Clean wheel installation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+          cache-suffix: wheel-3.14
+      - run: uv sync --locked
+      - run: uv run --locked python scripts/verify_wheel.py
+
+  standalone:
+    name: Standalone (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+          cache-suffix: standalone-3.14
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .state/pyinstaller-cache
+          key: pyinstaller-${{ runner.os }}-${{ runner.arch }}-3.14-${{ hashFiles('uv.lock', 'pyproject.toml', 'scripts/build_standalone.py') }}
       - run: uv sync --locked --group build
-      - run: uv run --locked decision skill --output skills/decision --check
-      - run: uv run --locked python -m unittest discover -s tests -v
-      - run: uv run --locked --group build python scripts/build_standalone.py --output .state/dist
+      - run: uv run --locked --group build python scripts/build_standalone.py --output .state/dist --cache-dir .state/pyinstaller-cache
+      - run: .state/dist/decision skill --output skills/decision --check
       - name: Verify standalone CLI and MCP without inference
         env:
           DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/.state/dist/decision
+          DECISION_TEST_MODE: standalone
         run: uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v

@@ -28,6 +28,10 @@ def command():
     return [binary] if binary else [sys.executable, str(SCRIPT)]
 
 
+def working_directory():
+    return os.getenv("DECISION_TEST_CWD")
+
+
 @unittest.skipUnless(HAS_SDKS, "requires pinned MCP and TypeSafe SDKs")
 class DecisionTransportTests(unittest.TestCase):
     def setUp(self):
@@ -87,8 +91,14 @@ class DecisionTransportTests(unittest.TestCase):
         self.environment = dict(os.environ, DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom",
                                 DECISION_API_KEY_ENV="FIXTURE_KEY", FIXTURE_KEY="provider-secret",
                                 DECISION_MODEL="fixture-default", TYPESAFEAI_API_KEY="do-not-forward")
-        if os.getenv("DECISION_TEST_EXECUTABLE"):
+        mode = os.getenv("DECISION_TEST_MODE", "standalone" if os.getenv("DECISION_TEST_EXECUTABLE") else "source")
+        if mode not in {"source", "wheel", "standalone"}:
+            raise ValueError("DECISION_TEST_MODE must be source, wheel, or standalone")
+        if mode == "standalone":
             self.environment.update(PATH="/nonexistent", PYTHONHOME="/nonexistent", PYTHONPATH="/nonexistent")
+        elif mode == "wheel":
+            self.environment.pop("PYTHONHOME", None)
+            self.environment.pop("PYTHONPATH", None)
 
     def close_server(self):
         self.server.shutdown()
@@ -110,7 +120,7 @@ class DecisionTransportTests(unittest.TestCase):
             for args, data in invocations:
                 before = len(self.requests)
                 result = subprocess.run([*command(), *args, "--json"], input=data, env=self.environment,
-                                        capture_output=True, text=True, timeout=30)
+                                        capture_output=True, text=True, timeout=30, cwd=working_directory())
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assert_batch(json.loads(result.stdout))
                 self.assertEqual(len(self.requests), before + 1)
@@ -126,7 +136,7 @@ class DecisionTransportTests(unittest.TestCase):
 
         async def check():
             cmd = command()
-            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp"], env=self.environment)
+            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp"], env=self.environment, cwd=working_directory())
             with tempfile.TemporaryFile(mode="w+") as diagnostics:
                 async with stdio_client(parameters, errlog=diagnostics) as (read, write):
                     async with ClientSession(read, write, read_timeout_seconds=20) as session:
@@ -178,7 +188,7 @@ class DecisionTransportTests(unittest.TestCase):
             photo.write_bytes(png_bytes())
             payload = {**REQUEST, "questions": {**REQUEST["questions"], "location": {"type": "box", "instructions": "Locate the square in images.photo"}}}
             result = subprocess.run([*command(), "run", "-", "--image", f"photo={photo}", "--model", "jev-1.14.0", "--json"],
-                                    input=json.dumps(payload), env=self.environment, text=True, capture_output=True, timeout=30)
+                                    input=json.dumps(payload), env=self.environment, text=True, capture_output=True, timeout=30, cwd=working_directory())
             self.assertEqual(result.returncode, 0, result.stderr)
             answers = json.loads(result.stdout)["answers"]
             self.assertEqual(set(answers), set(payload["questions"]))
@@ -191,7 +201,7 @@ class DecisionTransportTests(unittest.TestCase):
             self.assertIn(reference, body["assets"])
             self.assertIn(body["assets"][reference]["part"], self.uploads[0][0])
             human = subprocess.run([*command(), "box", "Find the square", "--image", str(photo)],
-                                   env=self.environment, text=True, capture_output=True, timeout=30)
+                                   env=self.environment, text=True, capture_output=True, timeout=30, cwd=working_directory())
             self.assertEqual(human.returncode, 0, human.stderr)
             self.assertIn("Box: left=0.1, top=0.2", human.stdout)
 
@@ -202,7 +212,7 @@ class DecisionTransportTests(unittest.TestCase):
 
         async def check():
             cmd = command()
-            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp"], env=self.environment)
+            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp"], env=self.environment, cwd=working_directory())
             async with stdio_client(parameters) as (read, write):
                 async with ClientSession(read, write, read_timeout_seconds=20) as session:
                     await session.initialize()

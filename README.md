@@ -177,12 +177,20 @@ tool implementation. Installing the skill does not install the executable.
 uv sync --locked --group build
 uv run --locked decision skill --output skills/decision --check
 uv run --locked python -m unittest discover -s tests -v
+uv run --locked python scripts/verify_wheel.py
 uv run --locked --group build python scripts/build_standalone.py --output .state/dist
 DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
   uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v
 ```
 
 Tests use local fixtures without inference. Do not commit environment files,
-credentials, build directories, or generated executables. Only Linux x86_64
-standalone builds have been verified; other platforms require native builds
-and testing. Dependencies are recorded in `uv.lock`.
+credentials, build directories, or generated executables. The clean-wheel check
+installs outside the checkout and tests CLI, skill generation, images, and MCP.
+See [AGENTS.md](AGENTS.md) for the module map, contracts, and narrow checks.
+
+CI runs the source suite on Linux with Python 3.11/3.14 and macOS with 3.14,
+plus separate wheel and native Linux/macOS standalone jobs. uv/Python and
+PyInstaller library caches reduce repeated downloads and processing; build
+outputs are always regenerated. Other platforms require native builds and
+testing. Dependencies are recorded in `uv.lock`. Work goes directly to `main`;
+tags are created manually when needed, with no automatic release workflow.

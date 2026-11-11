@@ -26,6 +26,20 @@ uv run --locked --group build python scripts/build_standalone.py --output .state
 The last command waits for an MCP client on stdin. Register that executable with
 `codex mcp add decision -- /absolute/path/to/decision mcp`.
 
+Repeated builds can reuse PyInstaller's processed-library cache:
+
+```bash
+uv run --locked --group build python scripts/build_standalone.py \
+  --output .state/decision-dist --cache-dir .state/pyinstaller-cache
+```
+
+Each build still creates fresh analysis, work, and spec files. Without
+`--cache-dir`, the helper uses a fresh temporary cache and `--clean`.
+CI caches uv downloads and managed Python installations separately by job,
+platform, Python version, and dependency files. It also caches processed native
+libraries by OS, architecture, Python version, dependencies, and build helper.
+Executables and analysis results are rebuilt rather than restored from cache.
+
 ## Verify the compiled artifact
 
 Use the same local-provider and MCP integration tests as the source version:
@@ -46,7 +60,9 @@ unrelated directory without Python or uv on PATH as a startup smoke test.
 
 - PyInstaller builds for the host OS and architecture, not a universal binary.
   Build and test Linux x86_64/arm64, macOS arm64/x86_64, and Windows separately
-  for whichever targets will be supported. Only Linux x86_64 is verified here.
+  for whichever targets will be supported. CI builds and tests the native
+  `ubuntu-latest` and `macos-latest` runner targets with Python 3.14. Other
+  architectures and Windows require their own native verification.
 - Linux bundles use the build host's glibc baseline. Build official Linux
   releases on the oldest supported distro; a build on a newer distro may not
   run on an older one. This is not a fully static executable.
