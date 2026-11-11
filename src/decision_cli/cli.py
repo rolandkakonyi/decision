@@ -1,4 +1,4 @@
-"""Ask typed questions through a System One compatible API."""
+"""Ask typed questions through TypeSafe System One or OpenAI Decisions."""
 
 import argparse
 import asyncio
@@ -11,11 +11,9 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-VERSION = "0.5.0"
+from decision_cli.errors import ProviderError
 
-
-class ProviderError(RuntimeError):
-    """A sanitized provider failure that contains no response body."""
+VERSION = "0.6.0"
 
 
 def read_json(path):
@@ -48,7 +46,10 @@ def parser():
         if name == "score":
             sub.add_argument("--level", action="append", required=True, help="Ordered level; repeat")
         sub.add_argument("--model", default=os.getenv("DECISION_MODEL"))
-        sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL") or os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai")
+        sub.add_argument("--provider", choices=("typesafe", "openai"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
+                         help="Wire API provider (default: DECISION_PROVIDER or typesafe)")
+        sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL"),
+                         help="API base URL; defaults to the selected provider's URL or provider-specific environment setting")
         sub.add_argument("--api-key-env", default=os.getenv("DECISION_API_KEY_ENV"),
                          help="Environment variable holding the provider key (default: DECISION_API_KEY_ENV)")
         sub.add_argument("--timeout", type=float, default=30)
@@ -136,20 +137,40 @@ def make_request(args):
 
     directory = Path(args.request_file).expanduser().resolve().parent if args.command == "run" and args.request_file != "-" else Path.cwd()
     payload = attach_cli_images(payload, args.image, directory)
-    return validate_request(payload, allow_paths=True)
+    return prepare_request(payload, args, allow_paths=True)
+
+
+def prepare_request(payload, args, *, allow_paths=False):
+    payload = dict(validate_request(payload, allow_paths=allow_paths))
+    if args.model and "model" not in payload:
+        payload["model"] = args.model
+    if args.provider == "openai":
+        from decision_cli.openai_provider import DEFAULT_MODEL, validate_request as validate_openai
+
+        payload.setdefault("model", DEFAULT_MODEL)
+        validate_openai(payload)
+    return payload
 
 
 def connection(args):
+    if args.provider not in {"typesafe", "openai"}:
+        raise ValueError("Provider must be typesafe or openai")
+    if not args.base_url:
+        args.base_url = (os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1") if args.provider == "openai" else (
+            os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai")
     url = urlsplit(args.base_url)
     if not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("Base URL must have a host and no credentials, query, or fragment")
     local = url.hostname in {"localhost", "127.0.0.1", "::1"}
     if url.scheme != "https" and not (url.scheme == "http" and local):
         raise ValueError("Base URL requires HTTPS (HTTP is allowed for loopback only)")
-    official = url.scheme == "https" and url.hostname == "api.typesafe.ai" and url.port in (None, 443)
+    official = url.scheme == "https" and url.port in (None, 443)
     names = [args.api_key_env] if args.api_key_env else ["DECISION_API_KEY"]
     if official and not args.api_key_env:
-        names += ["TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY"]
+        if args.provider == "typesafe" and url.hostname == "api.typesafe.ai":
+            names += ["TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY"]
+        elif args.provider == "openai" and url.hostname == "api.openai.com":
+            names += ["OPENAI_API_KEY"]
     key = next((os.environ[n].strip() for n in names if os.environ.get(n, "").strip()), None)
     return key
 
@@ -162,31 +183,34 @@ def validate_connection(args):
 
 def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
     """Shared CLI/MCP operation: one request for all questions sharing state."""
-    payload = dict(validate_request(payload, allow_paths=allow_paths))
+    payload = prepare_request(payload, args, allow_paths=allow_paths)
     from decision_cli.images import load_images
 
     image_data = load_images(payload, allow_paths) if image_data is None else image_data
     payload.pop("assets", None)
-    if "model" not in payload and args.model:
-        payload["model"] = args.model
     key = validate_connection(args)
     if not key:
-        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; TypeSafe URLs also accept TYPESAFE_API_KEY or TYPESAFEAI_API_KEY")
+        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY or OPENAI_API_KEY for their matching provider")
     logging.getLogger("typesafe_sdk").setLevel(logging.CRITICAL)
+    logging.getLogger("openai").setLevel(logging.CRITICAL)
     try:
-        from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
-
-        options = {}
-        if image_data:
-            options["assets"] = {name: Image(data) for name, data in image_data.items()}
-        if image_data or any(q["type"] == "box" for q in payload["questions"].values()):
-            options["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
-
         started = time.perf_counter()
-        with TypeSafeClient(api_key=key, base_url=args.base_url, timeout=args.timeout,
-                            retry=RetryPolicy(max_retries=0), compression=False) as client:
-            response = client.system_one(**payload, **options)
-        result = response.model_dump(mode="json")
+        if args.provider == "openai":
+            from decision_cli.openai_provider import evaluate
+
+            result = evaluate(payload, image_data, args, key)
+        else:
+            from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
+
+            options = {}
+            if image_data:
+                options["assets"] = {name: Image(data) for name, data in image_data.items()}
+            if image_data or any(q["type"] == "box" for q in payload["questions"].values()):
+                options["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
+            with TypeSafeClient(api_key=key, base_url=args.base_url, timeout=args.timeout,
+                                retry=RetryPolicy(max_retries=0), compression=False) as client:
+                response = client.system_one(**payload, **options)
+            result = response.model_dump(mode="json")
         if set(result.get("answers", {})) != set(payload["questions"]):
             raise ProviderError("Provider returned missing or unexpected question IDs; no answer returned")
         if any(result["answers"][name]["type"] != question["type"] for name, question in payload["questions"].items()):
@@ -201,17 +225,23 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
         raise ProviderError(f"{type(error).__name__}{suffix}; request failed, no answer returned") from None
 
 
-def request_schema():
+def request_schema(provider="typesafe"):
     """MCP input matches the batch JSON accepted by the CLI."""
     variants = []
     for kind in ("noul", "choice", "score", "box"):
+        if provider == "openai" and kind == "box":
+            continue
         fields = {"type": {"const": kind}, "instructions": {"type": "string", "minLength": 1}}
         required = ["type", "instructions"]
         if kind == "choice":
             fields["criteria"] = {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}}
+            if provider == "openai":
+                fields["criteria"].update(minProperties=2, maxProperties=255)
             required.append("criteria")
         elif kind == "score":
             fields["criteria"] = {"type": "array", "minItems": 1}
+            if provider == "openai":
+                fields["criteria"].update(minItems=2, maxItems=10)
             required.append("criteria")
         elif kind == "noul":
             fields["criteria"] = {"type": ["object", "null"], "properties": {"true": {}, "false": {}}, "additionalProperties": False}
@@ -226,6 +256,7 @@ def request_schema():
             "state": {"description": "Shared context for every independent question. JSON value, excluding null.",
                       "type": ["object", "array", "string", "number", "boolean"]},
             "questions": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1},
+                          **({"maxProperties": 400} if provider == "openai" else {}),
                           "description": "Named questions evaluated together in ONE provider request.",
                           "additionalProperties": {"oneOf": variants}},
             "model": {"type": "string", "minLength": 1, "description": "Optional model override; defaults to server configuration."},
@@ -257,7 +288,7 @@ async def serve_mcp(args):
     async def list_tools(_context, _params):
         return types.ListToolsResult(tools=[types.Tool(
             name="evaluate", description="Ask Jev or a System One compatible model multiple typed questions about shared context in one request. Returns answers keyed by question ID, probabilities, model, token usage, and duration_ms for the batch. Does not take actions based on judgments.",
-            inputSchema=request_schema(), outputSchema=response_schema(),
+            inputSchema=request_schema(args.provider), outputSchema=response_schema(),
             annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
         )])
 

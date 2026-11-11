@@ -4,7 +4,7 @@
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 
-One command for typed judgments from Jev or compatible System One providers.
+One command for typed judgments from Jev, OpenAI Decisions, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill.
 
@@ -27,7 +27,7 @@ This repository is private. Installations and updates require access to it.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling version 0.5.0, reinstall a non-editable local install
+edits live. After pulling version 0.6.0, reinstall a non-editable local install
 with `uv tool install --force .`.
 
 ## Ask several questions together
@@ -138,8 +138,8 @@ MCP accepts base64 bytes only, never paths on the server's filesystem. Format is
 optional and inferred; png, jpg, and jpeg are accepted. Base64 uses the standard
 alphabet without whitespace or a data: prefix.
 
-The CLI automatically sends `TypeSafe-Danger-Zone-Images: true` for image or
-Box requests. TypeSafe currently marks these features experimental; Box requires
+In TypeSafe mode, the CLI automatically sends `TypeSafe-Danger-Zone-Images: true`
+for image or Box requests. TypeSafe currently marks these features experimental; Box requires
 Jev 1.14. The CLI checks PNG/JPEG signatures and 16 MiB per file / 32 MiB combined.
 The provider validates decoding, dimensions (currently 280-1568 pixels per side),
 and expanded-request limits. Images are not resized. See the
@@ -232,26 +232,86 @@ breed. Add an `other` criterion when another breed or no dog is a valid outcome.
 ## Provider settings
 
 Set `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` for the default TypeSafe host.
-Switch compatible providers using environment variables:
+Choose the wire API with `--provider typesafe` (the default) or
+`--provider openai`, or set `DECISION_PROVIDER`. Both providers use the same
+question files and normalized answer format.
+
+### OpenAI Decisions
+
+With `OPENAI_API_KEY` exported into the command's environment:
 
 ```bash
+decision noul 'Does the message request a refund?' --state 'Please refund my order.' \
+  --provider openai --model gpt-6-luna
+
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+```
+
+Copy [openai-dog-questions.json](skills/decision/references/openai-dog-questions.json)
+for a mixed Noul, Choice, and Score batch:
+
+```bash
+decision ask --questions-file openai-dog-questions.json \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna --json
+```
+
+Or copy [openai-dog-request.json](skills/decision/references/openai-dog-request.json)
+beside your `dog.jpg`:
+
+```bash
+decision run openai-dog-request.json --provider openai --model gpt-6-luna --json
+```
+
+The adapter calls `POST /v1/decisions` through the official OpenAI SDK. It maps
+Noul to `predicate`, named Choice criteria to `choices`, and ordered Score
+criteria to `levels`. Answers retain their question IDs and the usual
+`noul`/`choice`/`score` types. Objects and arrays of objects become `input_json`
+evidence; other state values become text. Images are sent once as shared
+base64 data URLs, paired with their reference names. Structured criterion
+descriptions are serialized as JSON text; Noul true/false criteria are included
+in its instructions.
+
+OpenAI currently supports `gpt-6-luna`, 1–400 questions, 2–255 choices, and
+2–10 score levels. **Box is unsupported**: a batch containing Box fails before
+any provider call. Refusals, duplicate/missing IDs, or invalid answers fail the
+whole batch without returning partial judgments. No automatic retries or
+provider fallback are used. See the [official guide](https://developers.openai.com/api/docs/guides/decisions)
+and [API reference](https://developers.openai.com/api/reference/resources/decisions/methods/create).
+
+The OpenAI base URL defaults to `https://api.openai.com/v1`, overridable via
+`--base-url`, `DECISION_BASE_URL`, or `OPENAI_BASE_URL`, in that order. The default
+model is `gpt-6-luna` when no model is selected. `.env.local` is not loaded
+automatically; from a checkout, `uv run --env-file .env.local decision ...`
+loads the file explicitly without putting the key in command arguments.
+
+### Other compatible hosts
+
+Select the matching wire API and override routing and credentials:
+
+```bash
+export DECISION_PROVIDER=openai
 export DECISION_BASE_URL=https://provider.example/api
 export DECISION_API_KEY_ENV=OTHER_PROVIDER_KEY
 export DECISION_MODEL=provider-model
 decision run request.json
 ```
 
-`--base-url`, `--api-key-env`, and `--model` override those settings. The key
+`--provider`, `--base-url`, `--api-key-env`, and `--model` override those settings. The key
 selector is the name of an environment variable holding the credential, never
 the credential itself. `DECISION_API_KEY` can hold an explicitly selected key
-directly. TypeSafe credentials are not automatically sent to other hosts.
-Providers must implement the TypeSafe System One API and SDK authentication;
-an OpenAI-compatible chat endpoint alone does not suffice.
+directly. Default provider keys are used only on the matching provider's official
+HTTPS host. Other hosts require an explicit key selector or `DECISION_API_KEY`.
+For `typesafe`, the base URL also honors `TYPESAFE_BASE_URL` and the SDK uses its
+usual default model. Compatible hosts must implement the selected Decisions
+or System One API; a chat-completions endpoint alone does not suffice.
 
 ## MCP in the same command
 
 ```bash
 codex mcp add decision -- /absolute/path/to/decision mcp
+codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
 ```
 
 The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns structured
@@ -259,6 +319,9 @@ answers, model, usage, and `duration_ms` with an output schema. Forward the sele
 variable and its selector in Codex's MCP environment settings. Provider routing,
 key selection, and timeout are fixed server configuration; tool callers can
 override only the model. Stdout is reserved for protocol messages in MCP mode.
+An OpenAI server advertises only Noul, Choice, and Score and their provider limits.
+Forward `OPENAI_API_KEY` for the official OpenAI host, or the selected credential
+variable and `DECISION_API_KEY_ENV` for another host.
 
 ## Generated skill
 
@@ -294,7 +357,7 @@ uv run --locked python -m unittest discover -s tests -v
 uv run --locked python scripts/verify_wheel.py
 uv run --locked --group build python scripts/build_standalone.py --output .state/dist
 DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
-  uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v
+  uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
 ```
 
 Tests use local fixtures without inference. Do not commit environment files,

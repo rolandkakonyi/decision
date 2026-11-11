@@ -30,7 +30,8 @@ class DocumentedExamplesTests(unittest.TestCase):
             for name in ("dog.jpg", "before.jpg", "after.jpg"):
                 (root / name).write_bytes(png_bytes())
             for name in ("dog-request.json", "dog-questions.json",
-                         "dog-mixed-request.json", "dog-mixed-questions.json"):
+                         "dog-mixed-request.json", "dog-mixed-questions.json",
+                         "openai-dog-request.json", "openai-dog-questions.json"):
                 shutil.copyfile(REFERENCES / name, root / name)
             with chdir(root), patch.object(cli, "evaluate_request", side_effect=AssertionError("Examples must never call a provider")):
                 for command in commands:

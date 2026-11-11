@@ -16,7 +16,8 @@ decision noul
   --state STATE: Literal text context
   --state-file STATE_FILE: JSON state file; - reads stdin
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -30,7 +31,8 @@ decision choice
   --state-file STATE_FILE: JSON state file; - reads stdin
   --option OPTION: Required. NAME=description; repeat
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -44,7 +46,8 @@ decision score
   --state-file STATE_FILE: JSON state file; - reads stdin
   --level LEVEL: Required. Ordered level; repeat
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -57,7 +60,8 @@ decision box
   --state STATE: Literal text context
   --state-file STATE_FILE: JSON state file; - reads stdin
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -70,7 +74,8 @@ decision ask
   --state-file STATE_FILE: JSON state file; - reads stdin
   --questions-file QUESTIONS_FILE: Required. JSON object of named questions; - reads stdin
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -81,7 +86,8 @@ decision run
   -h, --help: show this help message and exit
   request_file: Required. JSON object with shared state and named questions; - reads stdin
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
@@ -91,6 +97,7 @@ decision run
 decision mcp
   -h, --help: show this help message and exit
   --model MODEL:
-  --base-url BASE_URL:
+  --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
+  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:

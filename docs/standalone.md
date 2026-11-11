@@ -1,14 +1,14 @@
 # Standalone decision
 
 The same program implements terminal commands and `decision mcp`. Build it with
-PyInstaller's one-file mode to bundle Python, the pinned TypeSafe and MCP SDKs,
+PyInstaller's one-file mode to bundle Python, the pinned TypeSafe, OpenAI, and MCP SDKs,
 and native dependencies. End users need no Python, uv, or package download.
 The executable still needs access to its configured provider and credentials.
 
 ## Build
 
 Requires `uv` and Python 3.11+ on the build host. The project pins `typesafe-sdk==0.7.5`, `mcp==2.3.0`, and
-`pyinstaller==6.22.3`, with transitive versions in `uv.lock`. The helper
+`openai==3.49.0`, and `pyinstaller==6.22.3`, with transitive versions in `uv.lock`. The helper
 analyzes imports and produces `decision` (or
 `decision.exe` on Windows) plus `SHA256SUMS` in the chosen output directory.
 It overwrites the same-named executable on subsequent builds. No credentials
@@ -46,11 +46,11 @@ Use the same local-provider and MCP integration tests as the source version:
 
 ```bash
 DECISION_TEST_EXECUTABLE="$PWD/.state/decision-dist/decision" \
-  uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v
+  uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
 ```
 
-These exercise initialization, tool discovery, input/output schemas, batches of
-typed questions in one provider call, PNG multipart uploads through CLI and MCP,
+These exercise both provider SDKs, initialization, tool discovery, input/output schemas, batches of
+typed questions in one provider call, PNG multipart uploads for TypeSafe and inline images for OpenAI through CLI and MCP,
 human/JSON output with token usage and duration, custom provider credentials, and recovery from errors without
 inference. The test runner needs Python and
 the SDKs; the tested executable does not. Check a copied executable from an

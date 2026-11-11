@@ -6,7 +6,7 @@ from pathlib import Path
 
 GUIDANCE = '''---
 name: decision
-description: "Ask Jev or a compatible System One provider multiple typed questions about shared context using decision CLI or MCP; classify choices, assess claims, or score rubrics."
+description: "Ask Jev, OpenAI Decisions, or a compatible provider multiple typed questions about shared text and images using decision CLI or MCP; classify choices, assess claims, or score rubrics."
 ---
 
 # Decision
@@ -16,7 +16,8 @@ description: "Ask Jev or a compatible System One provider multiple typed questio
 Use the installed `decision` command or its MCP `evaluate` tool for typed
 judgments over explicitly selected context. A Noul returns a yes probability;
 a Choice selects one named option with probabilities; a Score evaluates ordered
-rubric levels. Box questions locate an object in an image. The harness accepts
+rubric levels. Box questions locate an object in an image with TypeSafe/Jev;
+OpenAI Decisions supports Noul, Choice, and Score. The harness accepts
 JSON state and PNG/JPEG images. It produces data rather than
 prose explanations or researched answers. Keep policy and actions in code.
 
@@ -115,7 +116,7 @@ the standard alphabet without whitespace or a data: prefix. Optional `type`
 must be `image`; format can be png, jpg, or jpeg. Format is inferred when omitted.
 Prefer the shared state for an image used by several questions.
 
-The harness automatically sets TypeSafe's required
+In TypeSafe mode, the harness automatically sets the required
 `TypeSafe-Danger-Zone-Images: true` header for images or Box. TypeSafe currently
 labels images/Box experimental. Box needs Jev 1.14; use `--model jev-1.14.0`
 or another compatible model. Local checks enforce PNG/JPEG signatures and
@@ -126,16 +127,21 @@ on each side and are never resized by this CLI. Check the
 
 ## Provider configuration
 
-- `--base-url` overrides `DECISION_BASE_URL`, then `TYPESAFE_BASE_URL`; the default
-  is `https://api.typesafe.ai`. Include the provider's API prefix if needed.
+- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default) or `openai`.
+- `--base-url` overrides `DECISION_BASE_URL`, then the selected provider's
+  `TYPESAFE_BASE_URL` or `OPENAI_BASE_URL`. Defaults are `https://api.typesafe.ai`
+  and `https://api.openai.com/v1`. Include a compatible host's API prefix.
 - `--api-key-env MY_PROVIDER_KEY` overrides `DECISION_API_KEY_ENV`, selecting an
   environment variable by name. Without a selector, use `DECISION_API_KEY`.
-- Only the official TypeSafe HTTPS host can fall back to `TYPESAFE_API_KEY` or
-  `TYPESAFEAI_API_KEY`. Other hosts require an explicitly selected provider key.
+- Only the matching provider's official HTTPS host can fall back to
+  `TYPESAFE_API_KEY` / `TYPESAFEAI_API_KEY` or `OPENAI_API_KEY`. Other hosts
+  require an explicitly selected provider key. Keys never cross providers implicitly.
 - `--model` overrides `DECISION_MODEL`, then the CLI request's model. Without a
-  selected model, the SDK uses `TYPESAFE_DEFAULT_MODEL` or its own default.
+  selected model, TypeSafe uses `TYPESAFE_DEFAULT_MODEL` or its SDK default,
+  while OpenAI uses `gpt-6-luna`. MCP per-call model overrides its server default.
 - HTTPS is required except on local loopback. Other providers must implement
-  the TypeSafe System One contract; a chat-completions endpoint is insufficient.
+  the selected System One or Decisions contract; a chat-completions endpoint
+  is insufficient. Env files are not loaded automatically.
 
 ```bash
 export DECISION_BASE_URL=https://provider.example/api
@@ -150,6 +156,18 @@ chat histories, or secrets implicitly, or substitute providers after a failure.
 For experiments, establish the data and budget first. Provider access still
 depends on the execution environment's network settings.
 
+For OpenAI, use `--provider openai --model gpt-6-luna`. Noul is translated to
+native `predicate`; Choice criteria become named choices and Score criteria
+become ordered levels. Common answer IDs/types and stats stay the same.
+Objects and arrays of objects are passed as `input_json`; other state values
+are text. Images use shared base64 data URLs with reference labels. Structured
+criterion descriptions are JSON text; Noul criteria are included in instructions.
+The API supports 1–400 questions, 2–255 choices, and 2–10 score levels. Box
+is rejected before sending any request. Refusals or malformed answers fail the
+whole batch without partial judgments. Read `references/examples.md` and use
+`references/openai-dog-questions.json` or `references/openai-dog-request.json`.
+See the [official Decisions guide](https://developers.openai.com/api/docs/guides/decisions).
+
 ## MCP and code mode
 
 `decision mcp` serves one STDIO tool, `evaluate({state, questions, model?, assets?})`.
@@ -158,26 +176,29 @@ questions share one request just as in the CLI. Success returns
 `structuredContent` with answers, model, usage, and `duration_ms`, with a declared output schema;
 failures set `isError` and return no answer. MCP remains structured regardless
 of the CLI output default. Stdout is reserved for MCP protocol
-messages. Base URL, key selection, and timeout remain server configuration, and
+messages. Provider, base URL, key selection, and timeout remain server configuration, and
 the tool's optional model overrides the server default.
 
 When setting up MCP explicitly:
 
 ```bash
 codex mcp add decision -- /absolute/path/to/decision mcp
+codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
 ```
 
 Forward both the selector and the selected credential variable, for example
 `DECISION_API_KEY_ENV` and `OTHER_PROVIDER_KEY`, plus any provider/model settings
 in the server's `env_vars` configuration. For TypeSafe, forward
-`TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` instead. Cancellation cannot undo an
+`TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` instead; for OpenAI, forward `OPENAI_API_KEY`.
+OpenAI servers advertise only the three supported types and their provider limits.
+Cancellation cannot undo an
 already-sent provider request; its timeout still bounds it.
 
 ## References
 
 - `references/cli-help.txt`: generated command and flag reference.
-- `references/request-schema.json`: MCP-safe batch schema from the running tool;
-  CLI requests additionally accept local image path descriptors.
+- `references/request-schema.json`: default TypeSafe MCP batch schema from the
+  running tool; OpenAI MCP servers narrow this schema. CLI accepts local image paths.
 - `references/request.json`: synthetic batch example; copy it before editing.
 - `references/images.json`: image/Box CLI template; supply your own PNG/JPEG file.
 - `references/examples.md`: worked commands for all four question types and batches.
@@ -185,6 +206,8 @@ already-sent provider request; its timeout still bounds it.
 - `references/dog-questions.json`: the same questions for `ask --image dog=dog.jpg`.
 - `references/dog-mixed-request.json`: Noul, Box, and Choice sharing one dog image.
 - `references/dog-mixed-questions.json`: those three questions for `ask --image`.
+- `references/openai-dog-request.json`: mixed Noul, Choice, Score for OpenAI Decisions.
+- `references/openai-dog-questions.json`: those questions for OpenAI `ask --image`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 
@@ -236,6 +259,12 @@ DOG_MIXED_EXAMPLE = {
     **DOG_EXAMPLE,
     "questions": {name: DOG_EXAMPLE["questions"][name]
                   for name in ("dog_present", "dog_location", "breed")},
+}
+
+OPENAI_DOG_EXAMPLE = {
+    **DOG_EXAMPLE, "model": "gpt-6-luna",
+    "questions": {name: DOG_EXAMPLE["questions"][name]
+                  for name in ("dog_present", "breed", "face_visibility")},
 }
 
 EXAMPLES_GUIDE = '''# Worked examples
@@ -358,6 +387,39 @@ The questions file contains only the named questions object. You can change
 the image path without editing the questions. Add `--state` or `--state-file`
 for extra shared context; image-only state works too.
 
+## OpenAI Decisions: Noul, Choice, and Score
+
+Export `OPENAI_API_KEY` for the official OpenAI host. These use the same
+harness format, with `--provider openai` and the currently supported model:
+
+```bash
+decision noul 'Is a dog visible in images.dog?' \\
+  --image dog=dog.jpg --provider openai --model gpt-6-luna
+decision choice 'Which breed is the dog in images.dog?' \\
+  --image dog=dog.jpg --provider openai --model gpt-6-luna \\
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision score 'How clearly is the face of the dog in images.dog visible?' \\
+  --image dog=dog.jpg --provider openai --model gpt-6-luna \\
+  --level 'The face is not visible' --level 'The face is partly visible or obscured' \\
+  --level 'The entire face is clearly visible'
+```
+
+For a mixed batch, copy `references/openai-dog-questions.json` to
+`openai-dog-questions.json`. For the full request, copy
+`references/openai-dog-request.json` beside `dog.jpg`:
+
+```bash
+decision ask --questions-file openai-dog-questions.json \\
+  --image dog=dog.jpg --provider openai --model gpt-6-luna --json
+decision run openai-dog-request.json --provider openai --model gpt-6-luna --json
+```
+
+The image is sent once and the answers retain `dog_present`, `breed`, and
+`face_visibility`. Noul maps to OpenAI predicate; Box is unsupported and fails
+before sending a request. No partial batches or provider fallback are used.
+For MCP, start `decision mcp --provider openai` and pass the same common request
+with base64 image assets to `evaluate`, using `gpt-6-luna` as the model.
+
 ## Compare two images
 
 ```bash
@@ -444,6 +506,8 @@ def skill_files(cli, version, schema):
         "references/dog-questions.json": json.dumps(DOG_EXAMPLE["questions"], indent=2) + "\n",
         "references/dog-mixed-request.json": json.dumps(DOG_MIXED_EXAMPLE, indent=2) + "\n",
         "references/dog-mixed-questions.json": json.dumps(DOG_MIXED_EXAMPLE["questions"], indent=2) + "\n",
+        "references/openai-dog-request.json": json.dumps(OPENAI_DOG_EXAMPLE, indent=2) + "\n",
+        "references/openai-dog-questions.json": json.dumps(OPENAI_DOG_EXAMPLE["questions"], indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
         "references/cli-help.txt": command_reference(cli),
     }

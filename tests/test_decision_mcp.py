@@ -10,26 +10,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import threading
 import unittest
 
 from test_images import png_bytes
+from transport import command, working_directory, isolate
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "src/decision_cli/cli.py"
 REQUEST = json.loads((ROOT / "examples/request.json").read_text())
 HAS_SDKS = bool(importlib.util.find_spec("mcp") and importlib.util.find_spec("typesafe_sdk"))
-
-
-def command():
-    binary = os.getenv("DECISION_TEST_EXECUTABLE")
-    return [binary] if binary else [sys.executable, str(SCRIPT)]
-
-
-def working_directory():
-    return os.getenv("DECISION_TEST_CWD")
 
 
 @unittest.skipUnless(HAS_SDKS, "requires pinned MCP and TypeSafe SDKs")
@@ -88,17 +78,9 @@ class DecisionTransportTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        self.environment = dict(os.environ, DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom",
+        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="typesafe", DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom",
                                 DECISION_API_KEY_ENV="FIXTURE_KEY", FIXTURE_KEY="provider-secret",
-                                DECISION_MODEL="fixture-default", TYPESAFEAI_API_KEY="do-not-forward")
-        mode = os.getenv("DECISION_TEST_MODE", "standalone" if os.getenv("DECISION_TEST_EXECUTABLE") else "source")
-        if mode not in {"source", "wheel", "standalone"}:
-            raise ValueError("DECISION_TEST_MODE must be source, wheel, or standalone")
-        if mode == "standalone":
-            self.environment.update(PATH="/nonexistent", PYTHONHOME="/nonexistent", PYTHONPATH="/nonexistent")
-        elif mode == "wheel":
-            self.environment.pop("PYTHONHOME", None)
-            self.environment.pop("PYTHONPATH", None)
+                                DECISION_MODEL="fixture-default", TYPESAFEAI_API_KEY="do-not-forward"))
 
     def close_server(self):
         self.server.shutdown()

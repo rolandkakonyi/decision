@@ -53,7 +53,7 @@ def main():
             raise RuntimeError("Installed wheel skill differs from the committed generated skill")
         tests = dict(clean, DECISION_TEST_EXECUTABLE=str(executable), DECISION_TEST_MODE="wheel",
                      DECISION_TEST_CWD=str(workspace))
-        run(sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "tests"), "-p", "test_decision_mcp.py", "-v",
+        run(sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "tests"), "-p", "test_*mcp.py", "-v",
             cwd=workspace, env=tests)
     print("Clean wheel CLI, generated skill, image uploads, and MCP transport verified")
 

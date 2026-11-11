@@ -80,4 +80,4 @@ jobs:
         env:
           DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/.state/dist/decision
           DECISION_TEST_MODE: standalone
-        run: uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v
+        run: uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v

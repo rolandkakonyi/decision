@@ -135,6 +135,39 @@ The questions file contains only the named questions object. You can change
 the image path without editing the questions. Add `--state` or `--state-file`
 for extra shared context; image-only state works too.
 
+## OpenAI Decisions: Noul, Choice, and Score
+
+Export `OPENAI_API_KEY` for the official OpenAI host. These use the same
+harness format, with `--provider openai` and the currently supported model:
+
+```bash
+decision noul 'Is a dog visible in images.dog?' \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision score 'How clearly is the face of the dog in images.dog visible?' \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna \
+  --level 'The face is not visible' --level 'The face is partly visible or obscured' \
+  --level 'The entire face is clearly visible'
+```
+
+For a mixed batch, copy `references/openai-dog-questions.json` to
+`openai-dog-questions.json`. For the full request, copy
+`references/openai-dog-request.json` beside `dog.jpg`:
+
+```bash
+decision ask --questions-file openai-dog-questions.json \
+  --image dog=dog.jpg --provider openai --model gpt-6-luna --json
+decision run openai-dog-request.json --provider openai --model gpt-6-luna --json
+```
+
+The image is sent once and the answers retain `dog_present`, `breed`, and
+`face_visibility`. Noul maps to OpenAI predicate; Box is unsupported and fails
+before sending a request. No partial batches or provider fallback are used.
+For MCP, start `decision mcp --provider openai` and pass the same common request
+with base64 image assets to `evaluate`, using `gpt-6-luna` as the model.
+
 ## Compare two images
 
 ```bash

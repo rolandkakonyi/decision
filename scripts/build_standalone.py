@@ -21,8 +21,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="decision-build-") as temp:
         command = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile",
                    "--name", "decision", "--paths", str(source.parents[1]), "--collect-submodules", "decision_cli", "--distpath", str(output), "--workpath", str(Path(temp) / "work"),
-                   "--specpath", temp, "--collect-submodules", "typesafe_sdk",
-                   "--copy-metadata", "typesafe-sdk", "--copy-metadata", "mcp", str(source)]
+                   "--specpath", temp, "--collect-submodules", "typesafe_sdk", "--collect-submodules", "openai",
+                   "--copy-metadata", "typesafe-sdk", "--copy-metadata", "mcp", "--copy-metadata", "openai", str(source)]
         cache = args.cache_dir.resolve() if args.cache_dir else Path(temp) / "cache"
         cache.mkdir(parents=True, exist_ok=True)
         if args.cache_dir is None:
