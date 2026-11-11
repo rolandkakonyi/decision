@@ -32,34 +32,34 @@ class DecisionTests(unittest.TestCase):
 
     def test_dry_run_needs_no_credentials_and_preserves_literal_context(self):
         with patch.dict(os.environ, {}, clear=True):
-            code, out, err = self.invoke("noul", "Is this literal?", "--state", "`$(no)`\nquotes'", "--dry-run")
+            code, out, err = self.invoke("noul", "Is this literal?", "--state", "`$(no)`\nquotes'", "--dry-run", "--json")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["state"], "`$(no)`\nquotes'")
         self.assertEqual(err, "")
 
     def test_choice_score_and_batch(self):
-        code, out, _ = self.invoke("choice", "Which?", "--state", "x", "--option", "one=First", "--option", "two=Second", "--dry-run")
+        code, out, _ = self.invoke("choice", "Which?", "--state", "x", "--option", "one=First", "--option", "two=Second", "--dry-run", "--json")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["questions"]["answer"]["criteria"], {"one": "First", "two": "Second"})
-        code, out, _ = self.invoke("score", "How blocked?", "--state", "x", "--level", "Free", "--level", "Blocked", "--dry-run")
+        code, out, _ = self.invoke("score", "How blocked?", "--state", "x", "--level", "Free", "--level", "Blocked", "--dry-run", "--json")
         self.assertEqual(json.loads(out)["questions"]["answer"]["criteria"], ["Free", "Blocked"])
         self.assertEqual(code, 0)
         with patch("sys.stdin", io.StringIO((ROOT / "examples/request.json").read_text())):
-            code, out, _ = self.invoke("run", "-", "--model", "fixture", "--dry-run")
+            code, out, _ = self.invoke("run", "-", "--model", "fixture", "--dry-run", "--json")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["model"], "fixture")
         self.assertEqual(len(json.loads(out)["questions"]), 3)
 
     def test_invalid_input_is_not_an_answer(self):
         for extra in (("--timeout", "nan"), ("--timeout", "0"), ("--base-url", "http://remote.example")):
-            code, out, _ = self.invoke("noul", "Question?", "--state", "x", *extra, "--dry-run")
+            code, out, _ = self.invoke("noul", "Question?", "--state", "x", *extra, "--dry-run", "--json")
             self.assertEqual((code, out), (2, ""))
         with patch("sys.stdin", io.StringIO('{"state": "private context"')):
-            code, out, err = self.invoke("run", "-", "--dry-run")
+            code, out, err = self.invoke("run", "-", "--dry-run", "--json")
         self.assertEqual((code, out), (2, ""))
         self.assertNotIn("private context", err)
         with patch("sys.stdin", io.StringIO("{}")):
-            code, out, err = self.invoke("ask", "--state-file", "-", "--questions-file", "-", "--dry-run")
+            code, out, err = self.invoke("ask", "--state-file", "-", "--questions-file", "-", "--dry-run", "--json")
         self.assertEqual((code, out), (2, ""))
         self.assertIn("Only one input", err)
 
@@ -111,7 +111,7 @@ class DecisionTests(unittest.TestCase):
         try:
             env = dict(os.environ, DECISION_API_KEY="fixture-provider-key", TYPESAFEAI_API_KEY="never-forward")
             for state, expected in (("hello", 0), ("fail", 1)):
-                result = subprocess.run([sys.executable, str(HELPER), "noul", "Is it a greeting?", "--state", state,
+                result = subprocess.run([sys.executable, str(HELPER), "noul", "Is it a greeting?", "--state", state, "--json",
                                          "--base-url", f"http://127.0.0.1:{server.server_port}/custom", "--model", "fixture"],
                                         env=env, text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, expected, result.stderr)

@@ -3,6 +3,7 @@ decision command reference
 decision
   -h, --help: show this help message and exit
   --version: show program's version number and exit
+  --json: Print evaluation or request preview as JSON
 
 decision skill
   -h, --help: show this help message and exit
@@ -18,7 +19,9 @@ decision noul
   --base-url BASE_URL:
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
-  --dry-run: Print request JSON without network or credentials
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
 
 decision choice
   -h, --help: show this help message and exit
@@ -30,7 +33,9 @@ decision choice
   --base-url BASE_URL:
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
-  --dry-run: Print request JSON without network or credentials
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
 
 decision score
   -h, --help: show this help message and exit
@@ -42,7 +47,22 @@ decision score
   --base-url BASE_URL:
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
-  --dry-run: Print request JSON without network or credentials
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
+
+decision box
+  -h, --help: show this help message and exit
+  question: Required.
+  --state STATE: Literal text context
+  --state-file STATE_FILE: JSON state file; - reads stdin
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
 
 decision ask
   -h, --help: show this help message and exit
@@ -53,7 +73,9 @@ decision ask
   --base-url BASE_URL:
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
-  --dry-run: Print request JSON without network or credentials
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
 
 decision run
   -h, --help: show this help message and exit
@@ -62,7 +84,9 @@ decision run
   --base-url BASE_URL:
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --timeout TIMEOUT:
-  --dry-run: Print request JSON without network or credentials
+  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
+  --json: Print evaluation or request preview as JSON
+  --dry-run: Preview the validated request without contacting a provider
 
 decision mcp
   -h, --help: show this help message and exit

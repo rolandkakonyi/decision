@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from decision_cli import cli
-from decision_cli.skill import EXAMPLE, skill_files
+from decision_cli.skill import EXAMPLE, IMAGE_EXAMPLE, skill_files
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +20,7 @@ class SkillTests(unittest.TestCase):
     def test_committed_export_matches_running_cli(self):
         self.assertEqual(cli.main(["skill", "--output", str(ROOT / "skills/decision"), "--check"]), 0)
         self.assertEqual(EXAMPLE, json.loads((ROOT / "examples/request.json").read_text()))
+        self.assertEqual(IMAGE_EXAMPLE, json.loads((ROOT / "examples/images.json").read_text()))
         self.assertEqual(cli.VERSION, tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"])
 
     def test_generation_ignores_provider_settings_and_credentials(self):

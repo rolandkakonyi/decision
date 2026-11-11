@@ -125,6 +125,39 @@
       "type": "string",
       "minLength": 1,
       "description": "Optional model override; defaults to server configuration."
+    },
+    "assets": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "description": "Images keyed by unique references used in state, instructions, or criteria. MCP accepts base64 image bytes, never local paths.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "data_base64"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "image"
+          },
+          "format": {
+            "enum": [
+              "png",
+              "jpg",
+              "jpeg"
+            ]
+          },
+          "data_base64": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 22369624,
+            "description": "Standard base64-encoded PNG/JPEG; no data: prefix."
+          }
+        }
+      }
     }
   }
 }

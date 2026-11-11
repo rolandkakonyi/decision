@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from urllib.parse import urlsplit
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 class ProviderError(RuntimeError):
@@ -25,18 +25,19 @@ def read_json(path):
 def parser():
     cli = argparse.ArgumentParser(prog="decision", description=__doc__)
     cli.add_argument("--version", action="version", version=f"decision {VERSION}")
+    cli.add_argument("--json", action="store_true", help="Print evaluation or request preview as JSON")
     commands = cli.add_subparsers(dest="command", required=True)
     skill = commands.add_parser("skill", help="Print or export the companion Agent Skill; no API access")
     skill.add_argument("--output", type=Path, help="Write SKILL.md and references into this directory")
     skill.add_argument("--check", action="store_true", help="Verify an exported skill matches this tool")
-    for name in ("noul", "choice", "score", "ask", "run", "mcp"):
+    for name in ("noul", "choice", "score", "box", "ask", "run", "mcp"):
         sub = commands.add_parser(name)
-        if name in {"noul", "choice", "score"}:
+        if name in {"noul", "choice", "score", "box"}:
             sub.add_argument("question")
         if name == "run":
             sub.add_argument("request_file", help="JSON object with shared state and named questions; - reads stdin")
         if name not in {"run", "mcp"}:
-            state = sub.add_mutually_exclusive_group(required=True)
+            state = sub.add_mutually_exclusive_group()
             state.add_argument("--state", help="Literal text context")
             state.add_argument("--state-file", help="JSON state file; - reads stdin")
         if name == "ask":
@@ -51,15 +52,19 @@ def parser():
                          help="Environment variable holding the provider key (default: DECISION_API_KEY_ENV)")
         sub.add_argument("--timeout", type=float, default=30)
         if name != "mcp":
-            sub.add_argument("--dry-run", action="store_true", help="Print request JSON without network or credentials")
+            sub.add_argument("--image", action="append", default=[], metavar="[NAME=]PATH",
+                             help="Attach a PNG/JPEG under state.images; repeat for multiple images")
+            sub.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                             help="Print evaluation or request preview as JSON")
+            sub.add_argument("--dry-run", action="store_true", help="Preview the validated request without contacting a provider")
     return cli
 
 
-def validate_request(payload):
+def validate_request(payload, *, allow_paths=False):
     if not isinstance(payload, dict) or "state" not in payload or payload["state"] is None:
         raise ValueError("Request must be an object containing state and questions")
-    if set(payload) - {"state", "questions", "model"}:
-        raise ValueError("Only state, questions, and model are supported")
+    if set(payload) - {"state", "questions", "model", "assets"}:
+        raise ValueError("Only state, questions, model, and assets are supported")
     if "model" in payload and (not isinstance(payload["model"], str) or not payload["model"].strip()):
         raise ValueError("model must be a nonempty string")
     questions = payload.get("questions")
@@ -86,6 +91,9 @@ def validate_request(payload):
         json.dumps(payload, allow_nan=False)
     except (ValueError, TypeError):
         raise ValueError("Request must contain finite JSON values") from None
+    from decision_cli.images import validate_assets
+
+    validate_assets(payload, allow_paths)
     return payload
 
 
@@ -119,7 +127,15 @@ def make_request(args):
         if not isinstance(payload, dict):
             raise ValueError("Request must be an object")
         payload["model"] = args.model
-    return validate_request(payload)
+    if not isinstance(payload, dict):
+        raise ValueError("Request must be an object")
+    if args.command != "run" and payload.get("state") is None and not args.image:
+        raise ValueError("Supply --state, --state-file, or --image")
+    from decision_cli.images import attach_cli_images
+
+    directory = Path(args.request_file).expanduser().resolve().parent if args.command == "run" and args.request_file != "-" else Path.cwd()
+    payload = attach_cli_images(payload, args.image, directory)
+    return validate_request(payload, allow_paths=True)
 
 
 def connection(args):
@@ -143,9 +159,13 @@ def validate_connection(args):
     return connection(args)
 
 
-def evaluate_request(payload, args):
+def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
     """Shared CLI/MCP operation: one request for all questions sharing state."""
-    payload = dict(validate_request(payload))
+    payload = dict(validate_request(payload, allow_paths=allow_paths))
+    from decision_cli.images import load_images
+
+    image_data = load_images(payload, allow_paths) if image_data is None else image_data
+    payload.pop("assets", None)
     if "model" not in payload and args.model:
         payload["model"] = args.model
     key = validate_connection(args)
@@ -153,11 +173,17 @@ def evaluate_request(payload, args):
         raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; TypeSafe URLs also accept TYPESAFE_API_KEY or TYPESAFEAI_API_KEY")
     logging.getLogger("typesafe_sdk").setLevel(logging.CRITICAL)
     try:
-        from typesafe_sdk import RetryPolicy, TypeSafeClient
+        from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
+
+        options = {}
+        if image_data:
+            options["assets"] = {name: Image(data) for name, data in image_data.items()}
+        if image_data or any(q["type"] == "box" for q in payload["questions"].values()):
+            options["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
 
         with TypeSafeClient(api_key=key, base_url=args.base_url, timeout=args.timeout,
                             retry=RetryPolicy(max_retries=0), compression=False) as client:
-            response = client.system_one(**payload)
+            response = client.system_one(**payload, **options)
         result = response.model_dump(mode="json")
         if set(result.get("answers", {})) != set(payload["questions"]):
             raise ProviderError("Provider returned missing or unexpected question IDs; no answer returned")
@@ -189,6 +215,8 @@ def request_schema():
         else:
             fields["criteria"] = {}
         variants.append({"type": "object", "properties": fields, "required": required, "additionalProperties": False})
+    from decision_cli.images import assets_schema
+
     return {
         "type": "object", "required": ["state", "questions"], "additionalProperties": False,
         "properties": {
@@ -198,6 +226,7 @@ def request_schema():
                           "description": "Named questions evaluated together in ONE provider request.",
                           "additionalProperties": {"oneOf": variants}},
             "model": {"type": "string", "minLength": 1, "description": "Optional model override; defaults to server configuration."},
+            "assets": assets_schema(),
         },
     }
 
@@ -247,11 +276,15 @@ def main(argv=None):
             asyncio.run(serve_mcp(args))
             return 0
         payload = make_request(args)
+        from decision_cli.images import load_images
+        from decision_cli.output import render_preview, render_result
+
+        images = load_images(payload, allow_paths=True)
         if args.dry_run:
-            print(json.dumps(payload, indent=2, allow_nan=False))
+            print(json.dumps(payload, indent=2, allow_nan=False) if args.json else render_preview(payload, images))
             return 0
-        result = evaluate_request(payload, args)
-        print(json.dumps(result, allow_nan=False))
+        result = evaluate_request(payload, args, allow_paths=True, image_data=images)
+        print(json.dumps(result, allow_nan=False) if args.json else render_result(result))
         return 0
     except KeyboardInterrupt:
         return 130
