@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "decision-harness"
-version = "0.6.0"
-description = "Typed judgments through TypeSafe System One and OpenAI Decisions, with CLI and MCP"
+version = "0.7.0"
+description = "Typed judgments through TypeSafe, OpenAI Decisions, and Cloudflare Clef, with CLI and MCP"
 requires-python = ">=3.11"
 dependencies = [
     "typesafe-sdk==0.7.5",
     "mcp==2.3.0",
     "openai==3.49.0",
+    "httpx2==2.16.0",
 ]
 
 [project.scripts]

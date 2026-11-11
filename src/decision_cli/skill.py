@@ -6,7 +6,7 @@ from pathlib import Path
 
 GUIDANCE = '''---
 name: decision
-description: "Ask Jev, OpenAI Decisions, or a compatible provider multiple typed questions about shared text and images using decision CLI or MCP; classify choices, assess claims, or score rubrics."
+description: "Ask Jev, OpenAI Decisions, Cloudflare Clef, or a compatible provider multiple typed questions about shared text and images using decision CLI or MCP; classify choices, assess claims, or score rubrics."
 ---
 
 # Decision
@@ -17,7 +17,7 @@ Use the installed `decision` command or its MCP `evaluate` tool for typed
 judgments over explicitly selected context. A Noul returns a yes probability;
 a Choice selects one named option with probabilities; a Score evaluates ordered
 rubric levels. Box questions locate an object in an image with TypeSafe/Jev;
-OpenAI Decisions supports Noul, Choice, and Score. The harness accepts
+OpenAI Decisions and Cloudflare Clef support Noul, Choice, and Score. The harness accepts
 JSON state and PNG/JPEG images. It produces data rather than
 prose explanations or researched answers. Keep policy and actions in code.
 
@@ -108,8 +108,9 @@ Batch JSON can also include `assets`, keyed by a unique reference such as
 instructions, or criteria; object keys do not count as references. See
 `references/images.json` for a CLI template requiring your own image. Paths in
 a request file are relative to that file; paths in stdin or flags are relative
-to the working directory. Every asset must be referenced. The SDK uploads each
-asset once in multipart form, even when several questions share it.
+to the working directory. Every asset must be referenced. Each image is sent
+once per batch, even when several questions share it: TypeSafe uses multipart
+uploads; OpenAI and Cloudflare use base64 data URLs.
 
 MCP accepts only `data_base64` assets, never local file paths. Base64 must use
 the standard alphabet without whitespace or a data: prefix. Optional `type`
@@ -127,18 +128,26 @@ on each side and are never resized by this CLI. Check the
 
 ## Provider configuration
 
-- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default) or `openai`.
+- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, or `cloudflare`.
 - `--base-url` overrides `DECISION_BASE_URL`, then the selected provider's
-  `TYPESAFE_BASE_URL` or `OPENAI_BASE_URL`. Defaults are `https://api.typesafe.ai`
-  and `https://api.openai.com/v1`. Include a compatible host's API prefix.
+  `TYPESAFE_BASE_URL`, `OPENAI_BASE_URL`, or `CLOUDFLARE_BASE_URL`. Defaults are
+  `https://api.typesafe.ai`, `https://api.openai.com/v1`, and
+  `https://api.cloudflare.com/client/v4`. Include a compatible host's API prefix.
 - `--api-key-env MY_PROVIDER_KEY` overrides `DECISION_API_KEY_ENV`, selecting an
   environment variable by name. Without a selector, use `DECISION_API_KEY`.
 - Only the matching provider's official HTTPS host can fall back to
-  `TYPESAFE_API_KEY` / `TYPESAFEAI_API_KEY` or `OPENAI_API_KEY`. Other hosts
+  `TYPESAFE_API_KEY` / `TYPESAFEAI_API_KEY`, `OPENAI_API_KEY`, or
+  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_AUTH_TOKEN`. Other hosts
   require an explicitly selected provider key. Keys never cross providers implicitly.
 - `--model` overrides `DECISION_MODEL`, then the CLI request's model. Without a
   selected model, TypeSafe uses `TYPESAFE_DEFAULT_MODEL` or its SDK default,
-  while OpenAI uses `gpt-6-luna`. MCP per-call model overrides its server default.
+  while OpenAI uses `gpt-6-luna` and Cloudflare uses `clef`.
+  MCP per-call model overrides its server default.
+- Cloudflare's `--account-id` overrides `DECISION_ACCOUNT_ID`, then
+  `CLOUDFLARE_ACCOUNT_ID`. The default API root requires an account ID;
+  a custom Cloudflare base URL must be a Workers AI run root, such as
+  `https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/run`.
+  The adapter appends `/@cf/cloudflare/clef` or `/@cf/cloudflare/clef-flash`.
 - HTTPS is required except on local loopback. Other providers must implement
   the selected System One or Decisions contract; a chat-completions endpoint
   is insufficient. Env files are not loaded automatically.
@@ -168,6 +177,24 @@ whole batch without partial judgments. Read `references/examples.md` and use
 `references/openai-dog-questions.json` or `references/openai-dog-request.json`.
 See the [official Decisions guide](https://developers.openai.com/api/docs/guides/decisions).
 
+For Cloudflare Workers AI, use `--provider cloudflare` with `--model clef`
+(default) or `--model clef-flash`. Full `@cf/cloudflare/` model IDs are also
+accepted. Export `CLOUDFLARE_API_TOKEN` (Workers AI token template; custom
+tokens require Workers AI Read and Edit permissions) and
+`CLOUDFLARE_ACCOUNT_ID` for the official endpoint. Noul, Choice, and Score
+use the shared format, including mixed batches, images, and response stats.
+Box is rejected before any request. Limits are 1–64 questions, IDs containing
+1–100 letters/digits/underscores/dots/hyphens, 2–255 choices, 2–10 score levels,
+and 4 PNG/JPEG images: 4 MiB each, 8 MiB combined, 13 MiB encoded request body.
+The provider enforces image decoding and 16-megapixel dimensions. Images are
+sent in asset order; the adapter adds `state._decision_image_references` to
+map asset names to 1-based image positions. This field is reserved for image
+requests; scalar state is preserved under `context`. Unsuccessful envelopes,
+malformed answers, and incomplete batches fail without partial judgments.
+Use `references/cloudflare-dog-questions.json` or
+`references/cloudflare-dog-request.json`; see the worked guide and
+[official Clef docs](https://developers.cloudflare.com/workers-ai/models/clef/).
+
 ## MCP and code mode
 
 `decision mcp` serves one STDIO tool, `evaluate({state, questions, model?, assets?})`.
@@ -176,7 +203,7 @@ questions share one request just as in the CLI. Success returns
 `structuredContent` with answers, model, usage, and `duration_ms`, with a declared output schema;
 failures set `isError` and return no answer. MCP remains structured regardless
 of the CLI output default. Stdout is reserved for MCP protocol
-messages. Provider, base URL, key selection, and timeout remain server configuration, and
+messages. Provider, base URL, account ID, key selection, and timeout remain server configuration, and
 the tool's optional model overrides the server default.
 
 When setting up MCP explicitly:
@@ -184,13 +211,15 @@ When setting up MCP explicitly:
 ```bash
 codex mcp add decision -- /absolute/path/to/decision mcp
 codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
+codex mcp add decision-cloudflare -- /absolute/path/to/decision mcp --provider cloudflare
 ```
 
 Forward both the selector and the selected credential variable, for example
 `DECISION_API_KEY_ENV` and `OTHER_PROVIDER_KEY`, plus any provider/model settings
 in the server's `env_vars` configuration. For TypeSafe, forward
 `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` instead; for OpenAI, forward `OPENAI_API_KEY`.
-OpenAI servers advertise only the three supported types and their provider limits.
+For Cloudflare, forward `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+OpenAI and Cloudflare servers advertise only their supported types and provider limits.
 Cancellation cannot undo an
 already-sent provider request; its timeout still bounds it.
 
@@ -198,7 +227,7 @@ already-sent provider request; its timeout still bounds it.
 
 - `references/cli-help.txt`: generated command and flag reference.
 - `references/request-schema.json`: default TypeSafe MCP batch schema from the
-  running tool; OpenAI MCP servers narrow this schema. CLI accepts local image paths.
+  running tool; OpenAI and Cloudflare MCP servers narrow this schema. CLI accepts local image paths.
 - `references/request.json`: synthetic batch example; copy it before editing.
 - `references/images.json`: image/Box CLI template; supply your own PNG/JPEG file.
 - `references/examples.md`: worked commands for all four question types and batches.
@@ -208,6 +237,8 @@ already-sent provider request; its timeout still bounds it.
 - `references/dog-mixed-questions.json`: those three questions for `ask --image`.
 - `references/openai-dog-request.json`: mixed Noul, Choice, Score for OpenAI Decisions.
 - `references/openai-dog-questions.json`: those questions for OpenAI `ask --image`.
+- `references/cloudflare-dog-request.json`: mixed Noul, Choice, Score for Cloudflare Clef.
+- `references/cloudflare-dog-questions.json`: those questions for Cloudflare `ask --image`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 
@@ -267,10 +298,12 @@ OPENAI_DOG_EXAMPLE = {
                   for name in ("dog_present", "breed", "face_visibility")},
 }
 
+CLOUDFLARE_DOG_EXAMPLE = {**OPENAI_DOG_EXAMPLE, "model": "clef-flash"}
+
 EXAMPLES_GUIDE = '''# Worked examples
 
 Use your own PNG or JPEG image named `dog.jpg`. Image limits and provider
-settings are described in SKILL.md. These commands use Jev 1.14 explicitly.
+settings are described in SKILL.md. Commands use Jev 1.14 unless another provider is selected.
 Output is human-readable by default; append `--json` for structured output.
 Every successful query includes input/output token counts in `usage` and
 elapsed request time in `duration_ms`, for the whole batch.
@@ -420,6 +453,38 @@ before sending a request. No partial batches or provider fallback are used.
 For MCP, start `decision mcp --provider openai` and pass the same common request
 with base64 image assets to `evaluate`, using `gpt-6-luna` as the model.
 
+## Cloudflare Clef: Noul, Choice, and Score
+
+Export `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for Workers AI.
+Use `clef` (the default) or `clef-flash`; full `@cf/cloudflare/` IDs also work:
+
+```bash
+decision noul 'Is a dog visible in images.dog?' \\
+  --image dog=dog.jpg --provider cloudflare --model clef-flash
+decision choice 'Which breed is the dog in images.dog?' \\
+  --image dog=dog.jpg --provider cloudflare --model clef \\
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision score 'How clearly is the face of the dog in images.dog visible?' \\
+  --image dog=dog.jpg --provider cloudflare --model clef-flash \\
+  --level 'The face is not visible' --level 'The face is partly visible or obscured' \\
+  --level 'The entire face is clearly visible'
+```
+
+Copy `references/cloudflare-dog-questions.json` for `ask`, or copy
+`references/cloudflare-dog-request.json` beside `dog.jpg` for `run`:
+
+```bash
+decision ask --questions-file cloudflare-dog-questions.json \\
+  --image dog=dog.jpg --provider cloudflare --model clef-flash --json
+decision run cloudflare-dog-request.json --provider cloudflare --json
+```
+
+Both send one request with one image and return `dog_present`, `breed`, and
+`face_visibility`, plus input/output token counts and duration. For MCP, start
+`decision mcp --provider cloudflare` and call `evaluate` with the same request,
+replacing image paths with base64 assets. Box is unsupported. Cloudflare limits
+batches to 64 questions and 4 images (4 MiB each / 8 MiB combined).
+
 ## Compare two images
 
 ```bash
@@ -508,6 +573,8 @@ def skill_files(cli, version, schema):
         "references/dog-mixed-questions.json": json.dumps(DOG_MIXED_EXAMPLE["questions"], indent=2) + "\n",
         "references/openai-dog-request.json": json.dumps(OPENAI_DOG_EXAMPLE, indent=2) + "\n",
         "references/openai-dog-questions.json": json.dumps(OPENAI_DOG_EXAMPLE["questions"], indent=2) + "\n",
+        "references/cloudflare-dog-request.json": json.dumps(CLOUDFLARE_DOG_EXAMPLE, indent=2) + "\n",
+        "references/cloudflare-dog-questions.json": json.dumps(CLOUDFLARE_DOG_EXAMPLE["questions"], indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
         "references/cli-help.txt": command_reference(cli),
     }

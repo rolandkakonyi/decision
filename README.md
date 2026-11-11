@@ -4,7 +4,7 @@
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 
-One command for typed judgments from Jev, OpenAI Decisions, or compatible providers.
+One command for typed judgments from Jev, OpenAI Decisions, Cloudflare Clef, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill.
 
@@ -27,7 +27,7 @@ This repository is private. Installations and updates require access to it.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling version 0.6.0, reinstall a non-editable local install
+edits live. After pulling version 0.7.0, reinstall a non-editable local install
 with `uv tool install --force .`.
 
 ## Ask several questions together
@@ -131,7 +131,8 @@ question instructions, or criteria:
 
 Paths in request JSON files are relative to that file; flag paths and paths in
 stdin are relative to the working directory. Every asset must be referenced.
-The SDK uploads images once in multipart form, shared by the batch.
+Images are sent once per batch: TypeSafe uses multipart uploads; OpenAI and
+Cloudflare use base64 data URLs.
 
 For MCP, replace path descriptors with `{"data_base64": "...", "format": "png"}`.
 MCP accepts base64 bytes only, never paths on the server's filesystem. Format is
@@ -286,6 +287,58 @@ model is `gpt-6-luna` when no model is selected. `.env.local` is not loaded
 automatically; from a checkout, `uv run --env-file .env.local decision ...`
 loads the file explicitly without putting the key in command arguments.
 
+### Cloudflare Clef
+
+Use a Cloudflare Workers AI API token and your account's
+32-character ID. Export `CLOUDFLARE_API_TOKEN` (or `CLOUDFLARE_AUTH_TOKEN`) and
+`CLOUDFLARE_ACCOUNT_ID`, then run:
+
+```bash
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider cloudflare --model clef-flash \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+```
+
+`clef` is the default; `clef-flash`, `@cf/cloudflare/clef`, and
+`@cf/cloudflare/clef-flash` are also accepted. Noul, Choice, and Score share the
+same request format and response stats as the other providers. For a mixed
+batch, copy [cloudflare-dog-questions.json](skills/decision/references/cloudflare-dog-questions.json):
+
+```bash
+decision ask --questions-file cloudflare-dog-questions.json \
+  --image dog=dog.jpg --provider cloudflare --model clef-flash --json
+```
+
+Or copy [cloudflare-dog-request.json](skills/decision/references/cloudflare-dog-request.json)
+beside `dog.jpg` and run `decision run cloudflare-dog-request.json --provider cloudflare --json`.
+Both send one request with one image for all three questions.
+
+The adapter calls `/client/v4/accounts/ACCOUNT_ID/ai/run/@cf/cloudflare/MODEL`
+and validates the Workers AI response envelope before returning answers.
+Limits: 1–64 questions; IDs of 1–100 letters, digits, underscores, dots, or
+hyphens; 2–255 choices; 2–10 score levels. **Box is unsupported** and fails
+before sending a request. Up to 4 PNG/JPEG images are allowed, 4 MiB each and
+8 MiB combined; the encoded request body must fit within 13 MiB. Cloudflare
+enforces image decoding and the 16-megapixel limit. Images are sent in asset
+order, with `state._decision_image_references` mapping reference names to
+1-based positions. That field is reserved for image requests; scalar state
+is preserved under `context`. See the [official Clef docs](https://developers.cloudflare.com/workers-ai/models/clef/)
+and [Clef Flash docs](https://developers.cloudflare.com/workers-ai/models/clef-flash/).
+
+`--account-id` overrides `DECISION_ACCOUNT_ID`, then `CLOUDFLARE_ACCOUNT_ID`.
+The base URL defaults to `https://api.cloudflare.com/client/v4`, overridable
+via `--base-url`, `DECISION_BASE_URL`, or `CLOUDFLARE_BASE_URL`. At the default
+root, the adapter adds the account's `/accounts/ACCOUNT_ID/ai/run` path.
+A custom base URL must be a **Workers AI run root**, such as an account's
+`.../ai/run` or an AI Gateway's `.../workers-ai`; the adapter appends
+`/@cf/cloudflare/MODEL`. Custom hosts require `--api-key-env KEY_VARIABLE`
+(or `DECISION_API_KEY_ENV`) or `DECISION_API_KEY`. Account IDs and credentials
+are server configuration in MCP and cannot be overridden by tool callers.
+Dry runs require neither an account ID nor credentials. Cloudflare's
+[REST setup guide](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)
+recommends its Workers AI token template; custom tokens require Workers AI
+Read and Edit permissions.
+
 ### Other compatible hosts
 
 Select the matching wire API and override routing and credentials:
@@ -312,16 +365,18 @@ or System One API; a chat-completions endpoint alone does not suffice.
 ```bash
 codex mcp add decision -- /absolute/path/to/decision mcp
 codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
+codex mcp add decision-cloudflare -- /absolute/path/to/decision mcp --provider cloudflare
 ```
 
 The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns structured
 answers, model, usage, and `duration_ms` with an output schema. Forward the selected credential
 variable and its selector in Codex's MCP environment settings. Provider routing,
-key selection, and timeout are fixed server configuration; tool callers can
+account ID, key selection, and timeout are fixed server configuration; tool callers can
 override only the model. Stdout is reserved for protocol messages in MCP mode.
-An OpenAI server advertises only Noul, Choice, and Score and their provider limits.
+OpenAI and Cloudflare servers advertise only Noul, Choice, and Score and their provider limits.
 Forward `OPENAI_API_KEY` for the official OpenAI host, or the selected credential
 variable and `DECISION_API_KEY_ENV` for another host.
+For Cloudflare, forward `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Generated skill
 

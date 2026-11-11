@@ -19,6 +19,7 @@ decision noul
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -34,6 +35,7 @@ decision choice
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -49,6 +51,7 @@ decision score
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -63,6 +66,7 @@ decision box
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -77,6 +81,7 @@ decision ask
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -89,6 +94,7 @@ decision run
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:
   --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
   --json: Print evaluation or request preview as JSON
@@ -100,4 +106,5 @@ decision mcp
   --provider PROVIDER: Wire API provider (default: DECISION_PROVIDER or typesafe)
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
   --timeout TIMEOUT:

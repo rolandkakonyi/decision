@@ -1,4 +1,4 @@
-"""Ask typed questions through TypeSafe System One or OpenAI Decisions."""
+"""Ask typed questions through TypeSafe, OpenAI Decisions, or Cloudflare Clef."""
 
 import argparse
 import asyncio
@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from decision_cli.errors import ProviderError
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 
 def read_json(path):
@@ -46,12 +46,14 @@ def parser():
         if name == "score":
             sub.add_argument("--level", action="append", required=True, help="Ordered level; repeat")
         sub.add_argument("--model", default=os.getenv("DECISION_MODEL"))
-        sub.add_argument("--provider", choices=("typesafe", "openai"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
+        sub.add_argument("--provider", choices=("typesafe", "openai", "cloudflare"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
                          help="Wire API provider (default: DECISION_PROVIDER or typesafe)")
         sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL"),
                          help="API base URL; defaults to the selected provider's URL or provider-specific environment setting")
         sub.add_argument("--api-key-env", default=os.getenv("DECISION_API_KEY_ENV"),
                          help="Environment variable holding the provider key (default: DECISION_API_KEY_ENV)")
+        sub.add_argument("--account-id", default=os.getenv("DECISION_ACCOUNT_ID") or os.getenv("CLOUDFLARE_ACCOUNT_ID"),
+                         help="Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)")
         sub.add_argument("--timeout", type=float, default=30)
         if name != "mcp":
             sub.add_argument("--image", action="append", default=[], metavar="[NAME=]PATH",
@@ -149,15 +151,24 @@ def prepare_request(payload, args, *, allow_paths=False):
 
         payload.setdefault("model", DEFAULT_MODEL)
         validate_openai(payload)
+    elif args.provider == "cloudflare":
+        from decision_cli.cloudflare_provider import DEFAULT_MODEL, model_name, validate_request as validate_cloudflare
+
+        payload["model"] = model_name(payload.get("model", DEFAULT_MODEL))
+        validate_cloudflare(payload)
     return payload
 
 
 def connection(args):
-    if args.provider not in {"typesafe", "openai"}:
-        raise ValueError("Provider must be typesafe or openai")
+    if args.provider not in {"typesafe", "openai", "cloudflare"}:
+        raise ValueError("Provider must be typesafe, openai, or cloudflare")
     if not args.base_url:
-        args.base_url = (os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1") if args.provider == "openai" else (
-            os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai")
+        if args.provider == "openai":
+            args.base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+        elif args.provider == "cloudflare":
+            args.base_url = os.getenv("CLOUDFLARE_BASE_URL") or "https://api.cloudflare.com/client/v4"
+        else:
+            args.base_url = os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai"
     url = urlsplit(args.base_url)
     if not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("Base URL must have a host and no credentials, query, or fragment")
@@ -171,6 +182,8 @@ def connection(args):
             names += ["TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY"]
         elif args.provider == "openai" and url.hostname == "api.openai.com":
             names += ["OPENAI_API_KEY"]
+        elif args.provider == "cloudflare" and url.hostname == "api.cloudflare.com":
+            names += ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"]
     key = next((os.environ[n].strip() for n in names if os.environ.get(n, "").strip()), None)
     return key
 
@@ -190,7 +203,13 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
     payload.pop("assets", None)
     key = validate_connection(args)
     if not key:
-        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY or OPENAI_API_KEY for their matching provider")
+        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY, OPENAI_API_KEY, or CLOUDFLARE_API_TOKEN / CLOUDFLARE_AUTH_TOKEN")
+    if args.provider == "cloudflare":
+        from decision_cli.cloudflare_provider import endpoint, prepare_body
+
+        # Configuration and media-limit failures are input errors, before timing/network access.
+        endpoint(args, payload["model"])
+        cloudflare_body = prepare_body(payload, image_data)
     logging.getLogger("typesafe_sdk").setLevel(logging.CRITICAL)
     logging.getLogger("openai").setLevel(logging.CRITICAL)
     try:
@@ -199,6 +218,10 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
             from decision_cli.openai_provider import evaluate
 
             result = evaluate(payload, image_data, args, key)
+        elif args.provider == "cloudflare":
+            from decision_cli.cloudflare_provider import evaluate
+
+            result = evaluate(payload, cloudflare_body, args, key)
         else:
             from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
 
@@ -229,18 +252,18 @@ def request_schema(provider="typesafe"):
     """MCP input matches the batch JSON accepted by the CLI."""
     variants = []
     for kind in ("noul", "choice", "score", "box"):
-        if provider == "openai" and kind == "box":
+        if provider in {"openai", "cloudflare"} and kind == "box":
             continue
         fields = {"type": {"const": kind}, "instructions": {"type": "string", "minLength": 1}}
         required = ["type", "instructions"]
         if kind == "choice":
             fields["criteria"] = {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}}
-            if provider == "openai":
+            if provider in {"openai", "cloudflare"}:
                 fields["criteria"].update(minProperties=2, maxProperties=255)
             required.append("criteria")
         elif kind == "score":
             fields["criteria"] = {"type": "array", "minItems": 1}
-            if provider == "openai":
+            if provider in {"openai", "cloudflare"}:
                 fields["criteria"].update(minItems=2, maxItems=10)
             required.append("criteria")
         elif kind == "noul":
@@ -250,6 +273,15 @@ def request_schema(provider="typesafe"):
         variants.append({"type": "object", "properties": fields, "required": required, "additionalProperties": False})
     from decision_cli.images import assets_schema
 
+    assets = assets_schema()
+    model = {"type": "string", "minLength": 1, "description": "Optional model override; defaults to server configuration."}
+    if provider == "cloudflare":
+        from decision_cli.cloudflare_provider import MODELS, MAX_IMAGE_BYTES, MAX_IMAGES
+
+        assets["maxProperties"] = MAX_IMAGES
+        assets["additionalProperties"]["properties"]["data_base64"]["maxLength"] = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
+        assets["description"] += " Clef: at most 4 images, 4 MiB each and 8 MiB combined."
+        model["enum"] = [*MODELS, *("@cf/cloudflare/" + name for name in MODELS)]
     return {
         "type": "object", "required": ["state", "questions"], "additionalProperties": False,
         "properties": {
@@ -257,10 +289,11 @@ def request_schema(provider="typesafe"):
                       "type": ["object", "array", "string", "number", "boolean"]},
             "questions": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1},
                           **({"maxProperties": 400} if provider == "openai" else {}),
+                          **({"maxProperties": 64, "propertyNames": {"pattern": r"^[A-Za-z0-9_.-]{1,100}$"}} if provider == "cloudflare" else {}),
                           "description": "Named questions evaluated together in ONE provider request.",
                           "additionalProperties": {"oneOf": variants}},
-            "model": {"type": "string", "minLength": 1, "description": "Optional model override; defaults to server configuration."},
-            "assets": assets_schema(),
+            "model": model,
+            "assets": assets,
         },
     }
 
@@ -328,6 +361,10 @@ def main(argv=None):
 
         images = load_images(payload, allow_paths=True)
         if args.dry_run:
+            if args.provider == "cloudflare":
+                from decision_cli.cloudflare_provider import prepare_body
+
+                prepare_body(payload, images)
             print(json.dumps(payload, indent=2, allow_nan=False) if args.json else render_preview(payload, images))
             return 0
         result = evaluate_request(payload, args, allow_paths=True, image_data=images)

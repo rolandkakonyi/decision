@@ -1,7 +1,7 @@
 # Worked examples
 
 Use your own PNG or JPEG image named `dog.jpg`. Image limits and provider
-settings are described in SKILL.md. These commands use Jev 1.14 explicitly.
+settings are described in SKILL.md. Commands use Jev 1.14 unless another provider is selected.
 Output is human-readable by default; append `--json` for structured output.
 Every successful query includes input/output token counts in `usage` and
 elapsed request time in `duration_ms`, for the whole batch.
@@ -167,6 +167,38 @@ The image is sent once and the answers retain `dog_present`, `breed`, and
 before sending a request. No partial batches or provider fallback are used.
 For MCP, start `decision mcp --provider openai` and pass the same common request
 with base64 image assets to `evaluate`, using `gpt-6-luna` as the model.
+
+## Cloudflare Clef: Noul, Choice, and Score
+
+Export `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for Workers AI.
+Use `clef` (the default) or `clef-flash`; full `@cf/cloudflare/` IDs also work:
+
+```bash
+decision noul 'Is a dog visible in images.dog?' \
+  --image dog=dog.jpg --provider cloudflare --model clef-flash
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider cloudflare --model clef \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision score 'How clearly is the face of the dog in images.dog visible?' \
+  --image dog=dog.jpg --provider cloudflare --model clef-flash \
+  --level 'The face is not visible' --level 'The face is partly visible or obscured' \
+  --level 'The entire face is clearly visible'
+```
+
+Copy `references/cloudflare-dog-questions.json` for `ask`, or copy
+`references/cloudflare-dog-request.json` beside `dog.jpg` for `run`:
+
+```bash
+decision ask --questions-file cloudflare-dog-questions.json \
+  --image dog=dog.jpg --provider cloudflare --model clef-flash --json
+decision run cloudflare-dog-request.json --provider cloudflare --json
+```
+
+Both send one request with one image and return `dog_present`, `breed`, and
+`face_visibility`, plus input/output token counts and duration. For MCP, start
+`decision mcp --provider cloudflare` and call `evaluate` with the same request,
+replacing image paths with base64 assets. Box is unsupported. Cloudflare limits
+batches to 64 questions and 4 images (4 MiB each / 8 MiB combined).
 
 ## Compare two images
 

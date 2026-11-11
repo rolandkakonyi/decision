@@ -13,12 +13,13 @@ CI verifies commits and does not publish releases or create tags.
 | Commands, request validation, provider routing, MCP | `src/decision_cli/cli.py` | CLI and MCP share validation and evaluation. One batch sends one provider request; answer IDs and types must match. No automatic retries. Credentials and provider bodies stay out of diagnostics. MCP tool callers cannot redirect the provider or credential selector. |
 | Images and assets | `src/decision_cli/images.py` | CLI accepts paths and base64; MCP accepts base64 only. Preserve reference checks, byte limits, PNG/JPEG checks, and image opt-in. |
 | OpenAI Decisions | `src/decision_cli/openai_provider.py` | Translate common Noul/Choice/Score questions and image references to the native Decisions API. Reject Box and provider limits before network access. Preserve names and reject refusals, duplicate/missing answers, and malformed probability maps for the whole batch. |
+| Cloudflare Clef | `src/decision_cli/cloudflare_provider.py` | Use the account-scoped Workers AI run endpoint for Clef/Clef Flash. Validate the envelope and complete batch; reject Box and question/image/body limits before network access. Send each image once, preserving references with ordered metadata. Never retry or follow redirects. |
 | Provider errors | `src/decision_cli/errors.py` | Only safe, locally written failure messages reach the user; never expose provider response bodies. |
 | Terminal output | `src/decision_cli/output.py` | Human-readable query output by default; `--json` forces JSON. Every successful result preserves provider token usage and adds client-measured `duration_ms` for the batch. Unknown counts stay null, zero counts stay zero. Diagnostics use stderr. MCP stdout is protocol only. |
 | Skill export | `src/decision_cli/skill.py` | Generated command/schema references reflect the running tool. Generation needs no credentials or provider access. |
 | Wheel verification | `scripts/verify_wheel.py` | Install the built wheel in a fresh venv outside the checkout; test installed CLI, skill, image uploads, and MCP against a local provider fixture. |
 | Standalone build | `scripts/build_standalone.py` | Build for the host OS/architecture, bundle SDKs, produce a checksum. Optional cache reuses processed libraries; analysis and spec files start fresh. |
-| Tests | `tests/test_decision.py`, `tests/test_images.py`, `tests/test_*mcp.py`, `tests/test_openai_provider.py`, `tests/test_examples.py` | Request/output contracts; image validation; both CLI/MCP provider fixtures; OpenAI mapping; documented examples. `tests/transport.py` shares source/wheel/standalone isolation. No paid inference. |
+| Tests | `tests/test_decision.py`, `tests/test_images.py`, `tests/test_*mcp.py`, `tests/test_*provider.py`, `tests/test_examples.py` | Request/output contracts; image validation; all CLI/MCP provider fixtures; OpenAI/Clef mapping and limits; documented examples. `tests/transport.py` shares source/wheel/standalone isolation. No paid inference. |
 
 ## Validation
 
@@ -30,7 +31,8 @@ Start with `uv sync --locked`. Use the narrow check for the area being changed:
 | Image validation | `uv run --locked python -m unittest discover -s tests -p test_images.py -v` |
 | TypeSafe transport or MCP | `uv run --locked python -m unittest discover -s tests -p test_decision_mcp.py -v` |
 | OpenAI mapping and configuration | `uv run --locked python -m unittest discover -s tests -p test_openai_provider.py -v` |
-| Both provider transports and MCP | `uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v` |
+| Clef mapping and configuration | `uv run --locked python -m unittest discover -s tests -p test_cloudflare_provider.py -v` |
+| All provider transports and MCP | `uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v` |
 | Skill examples | `uv run --locked python -m unittest discover -s tests -p test_examples.py -v` |
 | Packaging, dependencies, entry points | `uv run --locked python scripts/verify_wheel.py` |
 | Standalone/runtime loading | Build and run the compiled transport tests below. |
