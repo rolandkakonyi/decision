@@ -77,6 +77,9 @@ decision box 'Locate the dog in images.dog' --image dog=dog.jpg --model jev-1.14
 Read `references/examples.md` for worked Choice, Noul, Score, Box, `ask`, and
 `run` examples. The option key before `=` is returned in a Choice answer; the
 text after `=` describes it. A Choice selects one of the offered options.
+For Noul, Box, and Choice together, use `references/dog-mixed-questions.json`
+with `ask`, or `references/dog-mixed-request.json` with `run`. The worked guide
+also shows the equivalent MCP `evaluate` input.
 
 Repeat `--image [NAME=]PATH` for several images. Unnamed images are called
 `image`, `image_2`, and so on. Flag images are attached under `state.images`;
@@ -166,6 +169,8 @@ already-sent provider request; its timeout still bounds it.
 - `references/examples.md`: worked commands for all four question types and batches.
 - `references/dog-request.json`: all four types sharing a dog image; put beside dog.jpg.
 - `references/dog-questions.json`: the same questions for `ask --image dog=dog.jpg`.
+- `references/dog-mixed-request.json`: Noul, Box, and Choice sharing one dog image.
+- `references/dog-mixed-questions.json`: those three questions for `ask --image`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 

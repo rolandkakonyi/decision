@@ -83,6 +83,9 @@ decision box 'Locate the dog in images.dog' --image dog=dog.jpg --model jev-1.14
 Read `references/examples.md` for worked Choice, Noul, Score, Box, `ask`, and
 `run` examples. The option key before `=` is returned in a Choice answer; the
 text after `=` describes it. A Choice selects one of the offered options.
+For Noul, Box, and Choice together, use `references/dog-mixed-questions.json`
+with `ask`, or `references/dog-mixed-request.json` with `run`. The worked guide
+also shows the equivalent MCP `evaluate` input.
 
 Repeat `--image [NAME=]PATH` for several images. Unnamed images are called
 `image`, `image_2`, and so on. Flag images are attached under `state.images`;
@@ -172,6 +175,8 @@ already-sent provider request; its timeout still bounds it.
 - `references/examples.md`: worked commands for all four question types and batches.
 - `references/dog-request.json`: all four types sharing a dog image; put beside dog.jpg.
 - `references/dog-questions.json`: the same questions for `ask --image dog=dog.jpg`.
+- `references/dog-mixed-request.json`: Noul, Box, and Choice sharing one dog image.
+- `references/dog-mixed-questions.json`: those three questions for `ask --image`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 
@@ -217,6 +222,12 @@ DOG_EXAMPLE = {
         },
         "dog_location": {"type": "box", "instructions": "Locate the dog in images.dog"},
     },
+}
+
+DOG_MIXED_EXAMPLE = {
+    **DOG_EXAMPLE,
+    "questions": {name: DOG_EXAMPLE["questions"][name]
+                  for name in ("dog_present", "dog_location", "breed")},
 }
 
 EXAMPLES_GUIDE = '''# Worked examples
@@ -277,6 +288,38 @@ Returns left, top, right, and bottom as fractions of image dimensions, plus
 confidence. Box requires Jev 1.14 and returns a location even when the target
 is absent; pair it with a presence Noul when absence matters.
 
+## Mixed Noul, Box, and Choice: CLI
+
+Save the following as `dog-mixed-questions.json`, or copy the file from
+`references/dog-mixed-questions.json`:
+
+```json
+@MIXED_QUESTIONS@
+```
+
+Ask all three questions about the same image with one provider request:
+
+```bash
+decision ask --questions-file dog-mixed-questions.json \\
+  --image dog=dog.jpg --model jev-1.14.0
+```
+
+For `run`, copy `references/dog-mixed-request.json` beside your `dog.jpg`,
+naming the copy `dog-mixed-request.json`. It wraps those same questions with
+the shared state, model, and image asset:
+
+```bash
+decision run dog-mixed-request.json --json
+```
+
+Both commands upload the image once and return answers keyed by `dog_present`,
+`dog_location`, and `breed`. Output is human-readable by default; add `--json`
+to either command for structured answers, or `--dry-run` to preview without
+inference. Questions are independent: use the presence probability to decide
+whether to use the location or breed answer after receiving the batch. A Box
+still returns coordinates when no dog is present, and Choice always selects
+one of its offered breeds. Add an `other` criterion when needed.
+
 ## Run: all four types in one request
 
 Copy `references/dog-request.json` beside your `dog.jpg`, naming the copy
@@ -330,13 +373,30 @@ decision noul 'Does the message request a refund?' \\
   --state 'Please refund my order.'
 ```
 
-## MCP
+## Mixed Noul, Box, and Choice: MCP
 
-The same batch can be sent to `evaluate`. Replace the path descriptor in
-`dog-request.json` with `{"data_base64": "...", "format": "jpeg"}` using the
-image's actual bytes. MCP accepts base64 assets, not local file paths, and
-returns structured answers regardless of the CLI output preference.
+Call the `evaluate` tool once with the following input. Replace
+`REPLACE_WITH_BASE64_IMAGE_BYTES` with the standard base64 encoding of your
+PNG/JPEG file's bytes, without whitespace or a `data:` prefix. The image
+format is inferred from the bytes.
+
+```json
+@MIXED_MCP@
+```
+
+This uses the same three named questions as the CLI example. MCP accepts
+base64 assets, not local file paths, and returns structured answers regardless
+of the CLI output preference. Read `structuredContent.answers.dog_present`,
+`structuredContent.answers.dog_location`, and `structuredContent.answers.breed`.
 '''
+
+EXAMPLES_GUIDE = EXAMPLES_GUIDE.replace(
+    "@MIXED_QUESTIONS@", json.dumps(DOG_MIXED_EXAMPLE["questions"], indent=2)
+).replace(
+    "@MIXED_MCP@", json.dumps({**DOG_MIXED_EXAMPLE, "assets": {
+        "<dog-photo>": {"data_base64": "REPLACE_WITH_BASE64_IMAGE_BYTES"},
+    }}, indent=2)
+)
 
 
 def command_reference(cli):
@@ -370,6 +430,8 @@ def skill_files(cli, version, schema):
         "references/examples.md": EXAMPLES_GUIDE,
         "references/dog-request.json": json.dumps(DOG_EXAMPLE, indent=2) + "\n",
         "references/dog-questions.json": json.dumps(DOG_EXAMPLE["questions"], indent=2) + "\n",
+        "references/dog-mixed-request.json": json.dumps(DOG_MIXED_EXAMPLE, indent=2) + "\n",
+        "references/dog-mixed-questions.json": json.dumps(DOG_MIXED_EXAMPLE["questions"], indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
         "references/cli-help.txt": command_reference(cli),
     }

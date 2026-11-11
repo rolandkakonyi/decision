@@ -119,6 +119,89 @@ and expanded-request limits. Images are not resized. See the
 [official image docs](https://docs.typesafe.ai/images) and
 [examples/images.json](examples/images.json).
 
+## Mix Noul, Box, and Choice in one request
+
+Every named question can have a different type. Save the following as
+`dog-mixed-questions.json`:
+
+```json
+{
+  "dog_present": {
+    "type": "noul",
+    "instructions": "Is a dog visible in images.dog?"
+  },
+  "dog_location": {
+    "type": "box",
+    "instructions": "Locate the dog in images.dog"
+  },
+  "breed": {
+    "type": "choice",
+    "instructions": "Which breed is the dog in images.dog?",
+    "criteria": {
+      "french_bulldog": "French bulldog",
+      "english_bulldog": "English bulldog"
+    }
+  }
+}
+```
+
+With the CLI, supply the questions and image separately:
+
+```bash
+decision ask --questions-file dog-mixed-questions.json \
+  --image dog=dog.jpg --model jev-1.14.0
+```
+
+Or copy [dog-mixed-request.json](skills/decision/references/dog-mixed-request.json)
+beside your `dog.jpg` and use the complete request file:
+
+```bash
+decision run dog-mixed-request.json --json
+```
+
+Both send **one provider request**, upload the image once, and retain the answer
+IDs `dog_present`, `dog_location`, and `breed`. CLI output is human-readable by
+default; add `--json` to either command for structured answers. Add `--dry-run`
+to preview without inference. Image paths inside request JSON are relative to
+that JSON file; `--image` paths are relative to your working directory.
+
+For MCP, call `evaluate` once with this input. Replace the placeholder with
+standard base64 of your PNG/JPEG bytes, without whitespace or a `data:` prefix:
+
+```json
+{
+  "model": "jev-1.14.0",
+  "state": {"images": {"dog": "<dog-photo>"}},
+  "assets": {
+    "<dog-photo>": {"data_base64": "REPLACE_WITH_BASE64_IMAGE_BYTES"}
+  },
+  "questions": {
+    "dog_present": {
+      "type": "noul",
+      "instructions": "Is a dog visible in images.dog?"
+    },
+    "dog_location": {
+      "type": "box",
+      "instructions": "Locate the dog in images.dog"
+    },
+    "breed": {
+      "type": "choice",
+      "instructions": "Which breed is the dog in images.dog?",
+      "criteria": {
+        "french_bulldog": "French bulldog",
+        "english_bulldog": "English bulldog"
+      }
+    }
+  }
+}
+```
+
+MCP returns `structuredContent.answers` keyed by the same three IDs and accepts
+base64 assets only. All questions are independent; use `dog_present` to decide
+whether to use the location and breed answers after receiving the batch. Box
+returns a location even when the dog is absent, and Choice selects an offered
+breed. Add an `other` criterion when another breed or no dog is a valid outcome.
+
 ## Provider settings
 
 Set `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` for the default TypeSafe host.

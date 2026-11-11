@@ -56,6 +56,55 @@ Returns left, top, right, and bottom as fractions of image dimensions, plus
 confidence. Box requires Jev 1.14 and returns a location even when the target
 is absent; pair it with a presence Noul when absence matters.
 
+## Mixed Noul, Box, and Choice: CLI
+
+Save the following as `dog-mixed-questions.json`, or copy the file from
+`references/dog-mixed-questions.json`:
+
+```json
+{
+  "dog_present": {
+    "type": "noul",
+    "instructions": "Is a dog visible in images.dog?"
+  },
+  "dog_location": {
+    "type": "box",
+    "instructions": "Locate the dog in images.dog"
+  },
+  "breed": {
+    "type": "choice",
+    "instructions": "Which breed is the dog in images.dog?",
+    "criteria": {
+      "french_bulldog": "French bulldog",
+      "english_bulldog": "English bulldog"
+    }
+  }
+}
+```
+
+Ask all three questions about the same image with one provider request:
+
+```bash
+decision ask --questions-file dog-mixed-questions.json \
+  --image dog=dog.jpg --model jev-1.14.0
+```
+
+For `run`, copy `references/dog-mixed-request.json` beside your `dog.jpg`,
+naming the copy `dog-mixed-request.json`. It wraps those same questions with
+the shared state, model, and image asset:
+
+```bash
+decision run dog-mixed-request.json --json
+```
+
+Both commands upload the image once and return answers keyed by `dog_present`,
+`dog_location`, and `breed`. Output is human-readable by default; add `--json`
+to either command for structured answers, or `--dry-run` to preview without
+inference. Questions are independent: use the presence probability to decide
+whether to use the location or breed answer after receiving the batch. A Box
+still returns coordinates when no dog is present, and Choice always selects
+one of its offered breeds. Add an `other` criterion when needed.
+
 ## Run: all four types in one request
 
 Copy `references/dog-request.json` beside your `dog.jpg`, naming the copy
@@ -109,9 +158,48 @@ decision noul 'Does the message request a refund?' \
   --state 'Please refund my order.'
 ```
 
-## MCP
+## Mixed Noul, Box, and Choice: MCP
 
-The same batch can be sent to `evaluate`. Replace the path descriptor in
-`dog-request.json` with `{"data_base64": "...", "format": "jpeg"}` using the
-image's actual bytes. MCP accepts base64 assets, not local file paths, and
-returns structured answers regardless of the CLI output preference.
+Call the `evaluate` tool once with the following input. Replace
+`REPLACE_WITH_BASE64_IMAGE_BYTES` with the standard base64 encoding of your
+PNG/JPEG file's bytes, without whitespace or a `data:` prefix. The image
+format is inferred from the bytes.
+
+```json
+{
+  "model": "jev-1.14.0",
+  "state": {
+    "images": {
+      "dog": "<dog-photo>"
+    }
+  },
+  "assets": {
+    "<dog-photo>": {
+      "data_base64": "REPLACE_WITH_BASE64_IMAGE_BYTES"
+    }
+  },
+  "questions": {
+    "dog_present": {
+      "type": "noul",
+      "instructions": "Is a dog visible in images.dog?"
+    },
+    "dog_location": {
+      "type": "box",
+      "instructions": "Locate the dog in images.dog"
+    },
+    "breed": {
+      "type": "choice",
+      "instructions": "Which breed is the dog in images.dog?",
+      "criteria": {
+        "french_bulldog": "French bulldog",
+        "english_bulldog": "English bulldog"
+      }
+    }
+  }
+}
+```
+
+This uses the same three named questions as the CLI example. MCP accepts
+base64 assets, not local file paths, and returns structured answers regardless
+of the CLI output preference. Read `structuredContent.answers.dog_present`,
+`structuredContent.answers.dog_location`, and `structuredContent.answers.breed`.
