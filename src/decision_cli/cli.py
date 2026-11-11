@@ -8,9 +8,10 @@ import math
 import os
 from pathlib import Path
 import sys
+import time
 from urllib.parse import urlsplit
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 
 class ProviderError(RuntimeError):
@@ -181,6 +182,7 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
         if image_data or any(q["type"] == "box" for q in payload["questions"].values()):
             options["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
 
+        started = time.perf_counter()
         with TypeSafeClient(api_key=key, base_url=args.base_url, timeout=args.timeout,
                             retry=RetryPolicy(max_retries=0), compression=False) as client:
             response = client.system_one(**payload, **options)
@@ -189,6 +191,7 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
             raise ProviderError("Provider returned missing or unexpected question IDs; no answer returned")
         if any(result["answers"][name]["type"] != question["type"] for name, question in payload["questions"].items()):
             raise ProviderError("Provider returned unexpected answer types; no answer returned")
+        result["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
         return result
     except ProviderError:
         raise
@@ -231,17 +234,30 @@ def request_schema():
     }
 
 
+def response_schema():
+    """Provider response plus client-measured elapsed time for the whole batch."""
+    from typesafe_sdk import SystemOneResponse
+
+    schema = SystemOneResponse.model_json_schema()
+    schema["title"] = "DecisionResponse"
+    schema["properties"]["duration_ms"] = {
+        "type": "number", "minimum": 0,
+        "description": "Client-measured elapsed milliseconds for SDK setup, image upload, and provider response handling for the entire batch.",
+    }
+    schema.setdefault("required", []).append("duration_ms")
+    return schema
+
+
 async def serve_mcp(args):
     """Expose the same operation through the official MCP SDK over stdio."""
     from mcp import types
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
-    from typesafe_sdk import SystemOneResponse
 
     async def list_tools(_context, _params):
         return types.ListToolsResult(tools=[types.Tool(
-            name="evaluate", description="Ask Jev or a System One compatible model multiple typed questions about shared context in one request. Returns answers keyed by question ID, probabilities, model, and usage. Does not take actions based on judgments.",
-            inputSchema=request_schema(), outputSchema=SystemOneResponse.model_json_schema(),
+            name="evaluate", description="Ask Jev or a System One compatible model multiple typed questions about shared context in one request. Returns answers keyed by question ID, probabilities, model, token usage, and duration_ms for the batch. Does not take actions based on judgments.",
+            inputSchema=request_schema(), outputSchema=response_schema(),
             annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
         )])
 

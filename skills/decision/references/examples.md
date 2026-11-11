@@ -3,6 +3,8 @@
 Use your own PNG or JPEG image named `dog.jpg`. Image limits and provider
 settings are described in SKILL.md. These commands use Jev 1.14 explicitly.
 Output is human-readable by default; append `--json` for structured output.
+Every successful query includes input/output token counts in `usage` and
+elapsed request time in `duration_ms`, for the whole batch.
 
 ## Choice: select a breed
 
@@ -203,3 +205,5 @@ This uses the same three named questions as the CLI example. MCP accepts
 base64 assets, not local file paths, and returns structured answers regardless
 of the CLI output preference. Read `structuredContent.answers.dog_present`,
 `structuredContent.answers.dog_location`, and `structuredContent.answers.breed`.
+Read token counts from `structuredContent.usage` and elapsed milliseconds from
+`structuredContent.duration_ms`.

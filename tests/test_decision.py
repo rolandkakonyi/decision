@@ -88,6 +88,23 @@ class DecisionTests(unittest.TestCase):
             self.assertEqual(args.model, "flag-model")
 
     @unittest.skipUnless(importlib.util.find_spec("typesafe_sdk"), "requires typesafe-sdk==0.7.5")
+    def test_batch_duration_uses_monotonic_elapsed_time(self):
+        payload = json.loads((ROOT / "examples/request.json").read_text())
+        answers = {name: {"type": question["type"]} for name, question in payload["questions"].items()}
+        with patch.dict(os.environ, {"DECISION_API_KEY": "fixture-key"}, clear=True), \
+                patch("typesafe_sdk.TypeSafeClient") as sdk, \
+                patch.object(decision.time, "perf_counter", side_effect=[10.0, 10.125]) as clock:
+            args = decision.parser().parse_args(["run", "-"])
+            client = sdk.return_value.__enter__.return_value
+            client.system_one.return_value.model_dump.return_value = {
+                "model": "fixture", "usage": {"input_tokens": 10, "output_tokens": 3}, "answers": answers,
+            }
+            result = decision.evaluate_request(payload, args)
+        self.assertEqual(result["duration_ms"], 125.0)
+        self.assertEqual(clock.call_count, 2)
+        client.system_one.assert_called_once_with(**payload)
+
+    @unittest.skipUnless(importlib.util.find_spec("typesafe_sdk"), "requires typesafe-sdk==0.7.5")
     def test_real_sdk_transport_and_error_redaction(self):
         requests = []
         class Handler(BaseHTTPRequestHandler):
@@ -96,7 +113,10 @@ class DecisionTests(unittest.TestCase):
                 requests.append((self.path, self.headers.get("Authorization"), body))
                 failed = body["state"] == "fail"
                 data = ({"error": "fixture-provider-key private context"} if failed else {
-                    "model": "fixture", "usage": {"input_tokens": 1, "output_tokens": 1},
+                    "model": "fixture", "usage": ({} if body["state"] == "unreported" else {
+                        "input_tokens": 0 if body["state"] == "zero" else 1,
+                        "output_tokens": 0 if body["state"] == "zero" else 1,
+                    }),
                     "answers": {"answer": {"type": "noul", "noul": 0.75}},
                 })
                 self.send_response(401 if failed else 200)
@@ -110,18 +130,23 @@ class DecisionTests(unittest.TestCase):
         thread.start()
         try:
             env = dict(os.environ, DECISION_API_KEY="fixture-provider-key", TYPESAFEAI_API_KEY="never-forward")
-            for state, expected in (("hello", 0), ("fail", 1)):
+            for state, expected in (("hello", 0), ("unreported", 0), ("zero", 0), ("fail", 1)):
                 result = subprocess.run([sys.executable, str(HELPER), "noul", "Is it a greeting?", "--state", state, "--json",
                                          "--base-url", f"http://127.0.0.1:{server.server_port}/custom", "--model", "fixture"],
                                         env=env, text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, expected, result.stderr)
                 if expected == 0:
-                    self.assertEqual(json.loads(result.stdout)["answers"]["answer"]["noul"], 0.75)
+                    response = json.loads(result.stdout)
+                    self.assertEqual(response["answers"]["answer"]["noul"], 0.75)
+                    count = None if state == "unreported" else (0 if state == "zero" else 1)
+                    self.assertEqual(response["usage"], {"input_tokens": count, "output_tokens": count})
+                    self.assertIsInstance(response["duration_ms"], (int, float))
+                    self.assertGreaterEqual(response["duration_ms"], 0)
                 else:
                     self.assertEqual(result.stdout, "")
                     self.assertNotIn("fixture-provider-key", result.stderr)
                     self.assertNotIn("private context", result.stderr)
-            self.assertEqual(len(requests), 2)  # No retries, including on errors.
+            self.assertEqual(len(requests), 4)  # No retries, including on errors.
             self.assertTrue(all(path == "/custom/v1/systemone" for path, _, _ in requests), requests)
             self.assertTrue(all(auth == "Bearer fixture-provider-key" for _, auth, _ in requests))
             self.assertEqual(requests[0][2]["model"], "fixture")

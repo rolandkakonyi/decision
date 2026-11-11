@@ -31,10 +31,9 @@ def render_result(result):
             label = answer.get("legend", {}).get(option, option)
             lines.append(f"    {text(label)}: {probability:.1%}")
     usage = result.get("usage", {})
-    counts = [f"{usage[key]} {label} tokens" for key, label in (("input_tokens", "input"), ("output_tokens", "output"))
-              if usage.get(key) is not None]
-    if counts:
-        lines.extend(["", "Usage: " + ", ".join(counts)])
+    counts = [f"{usage[key]} {label} tokens" if usage.get(key) is not None else f"{label} tokens unavailable"
+              for key, label in (("input_tokens", "input"), ("output_tokens", "output"))]
+    lines.extend(["", "Usage: " + ", ".join(counts), f"Duration: {result['duration_ms']:.3f} ms"])
     return "\n".join(lines)
 
 

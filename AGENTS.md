@@ -12,7 +12,7 @@ CI verifies commits and does not publish releases or create tags.
 | --- | --- | --- |
 | Commands, request validation, provider routing, MCP | `src/decision_cli/cli.py` | CLI and MCP share validation and evaluation. One batch sends one provider request; answer IDs and types must match. No automatic retries. Credentials and provider bodies stay out of diagnostics. MCP tool callers cannot redirect the provider or credential selector. |
 | Images and assets | `src/decision_cli/images.py` | CLI accepts paths and base64; MCP accepts base64 only. Preserve reference checks, byte limits, PNG/JPEG checks, and image opt-in. |
-| Terminal output | `src/decision_cli/output.py` | Human-readable query output by default; `--json` forces JSON. Diagnostics use stderr. MCP stdout is protocol only. |
+| Terminal output | `src/decision_cli/output.py` | Human-readable query output by default; `--json` forces JSON. Every successful result preserves provider token usage and adds client-measured `duration_ms` for the batch. Unknown counts stay null, zero counts stay zero. Diagnostics use stderr. MCP stdout is protocol only. |
 | Skill export | `src/decision_cli/skill.py` | Generated command/schema references reflect the running tool. Generation needs no credentials or provider access. |
 | Wheel verification | `scripts/verify_wheel.py` | Install the built wheel in a fresh venv outside the checkout; test installed CLI, skill, image uploads, and MCP against a local provider fixture. |
 | Standalone build | `scripts/build_standalone.py` | Build for the host OS/architecture, bundle SDKs, produce a checksum. Optional cache reuses processed libraries; analysis and spec files start fresh. |

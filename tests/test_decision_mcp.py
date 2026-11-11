@@ -105,7 +105,13 @@ class DecisionTransportTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
+    def assert_stats(self, result):
+        self.assertEqual(result["usage"], {"input_tokens": 10, "output_tokens": 3})
+        self.assertIsInstance(result["duration_ms"], (int, float))
+        self.assertGreaterEqual(result["duration_ms"], 0)
+
     def assert_batch(self, result):
+        self.assert_stats(result)
         self.assertEqual(set(result["answers"]), set(REQUEST["questions"]))
         self.assertEqual(result["answers"]["team"]["choice"], "billing")
         self.assertEqual(result["answers"]["refund"]["noul"], 0.9)
@@ -128,6 +134,7 @@ class DecisionTransportTests(unittest.TestCase):
                 self.assertEqual(path, "/custom/v1/systemone")
                 self.assertEqual(auth, "Bearer provider-secret")
                 self.assertEqual(payload["questions"], REQUEST["questions"])
+                self.assertNotIn("duration_ms", payload)
 
     def test_mcp_handshake_discovery_batches_and_recoverable_errors(self):
         from mcp import ClientSession
@@ -145,12 +152,14 @@ class DecisionTransportTests(unittest.TestCase):
                         tools = (await session.list_tools()).tools
                         self.assertEqual([t.name for t in tools], ["evaluate"])
                         tool = tools[0]
+                        self.assertIn("duration_ms", tool.output_schema["required"])
                         validate(REQUEST, tool.input_schema)
                         self.assertTrue(tool.annotations.read_only_hint)
                         result = await session.call_tool("evaluate", {**REQUEST, "model": "call-override"})
                         self.assertFalse(result.is_error)
                         self.assert_batch(result.structured_content)
                         validate(result.structured_content, tool.output_schema)
+                        self.assertEqual(json.loads(result.content[0].text), result.structured_content)
                         self.assertEqual(len(self.requests), 1)
                         self.assertEqual(self.requests[0][2]["model"], "call-override")
                         self.assertEqual(self.requests[0][1], "Bearer provider-secret")
@@ -190,7 +199,9 @@ class DecisionTransportTests(unittest.TestCase):
             result = subprocess.run([*command(), "run", "-", "--image", f"photo={photo}", "--model", "jev-1.14.0", "--json"],
                                     input=json.dumps(payload), env=self.environment, text=True, capture_output=True, timeout=30, cwd=working_directory())
             self.assertEqual(result.returncode, 0, result.stderr)
-            answers = json.loads(result.stdout)["answers"]
+            response = json.loads(result.stdout)
+            self.assert_stats(response)
+            answers = response["answers"]
             self.assertEqual(set(answers), set(payload["questions"]))
             self.assertEqual(len(self.requests), 1)
             self.assertEqual(len(self.uploads[0][0]), 1)
@@ -204,6 +215,8 @@ class DecisionTransportTests(unittest.TestCase):
                                    env=self.environment, text=True, capture_output=True, timeout=30, cwd=working_directory())
             self.assertEqual(human.returncode, 0, human.stderr)
             self.assertIn("Box: left=0.1, top=0.2", human.stdout)
+            self.assertIn("Usage: 10 input tokens, 3 output tokens", human.stdout)
+            self.assertRegex(human.stdout, r"Duration: \d+\.\d{3} ms")
 
     def test_mcp_base64_images_are_uploaded_and_paths_are_rejected(self):
         from mcp import ClientSession
@@ -224,6 +237,7 @@ class DecisionTransportTests(unittest.TestCase):
                     validate(payload, tool.input_schema)
                     result = await session.call_tool("evaluate", payload)
                     self.assertFalse(result.is_error)
+                    self.assert_stats(result.structured_content)
                     self.assertEqual(set(result.structured_content["answers"]), {"red", "location"})
                     self.assertEqual(len(self.requests), 1)
                     self.assertEqual(next(iter(self.uploads[0][0].values())), png_bytes())

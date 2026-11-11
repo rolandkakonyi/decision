@@ -27,7 +27,7 @@ This repository is private. Installations and updates require access to it.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling version 0.4.0, reinstall a non-editable local install
+edits live. After pulling version 0.5.0, reinstall a non-editable local install
 with `uv tool install --force .`.
 
 ## Ask several questions together
@@ -48,6 +48,33 @@ inference. Human-readable output is the default, including when piped. Add
 `--json` before or after a query command to force JSON for scripts. The default
 changed in 0.4.0, so existing JSON consumers must add that flag. MCP responses
 stay structured. Diagnostics go to stderr; requests are not automatically retried.
+
+## Response stats
+
+Every successful query includes input/output token counts and elapsed request
+time, for single questions and mixed batches. Human-readable output ends with:
+
+```text
+Usage: 120 input tokens, 12 output tokens
+Duration: 243.180 ms
+```
+
+JSON output and MCP `structuredContent` include these fields alongside the
+model and answers:
+
+```json
+{
+  "usage": {"input_tokens": 120, "output_tokens": 12},
+  "duration_ms": 243.18
+}
+```
+
+Stats cover the whole batch. `duration_ms` is measured with a monotonic clock
+around SDK setup, image upload, and provider response handling. Process startup
+and local file validation are excluded. Token counts come from the provider;
+unreported counts are `null` in JSON/MCP and shown as unavailable in readable
+output. Zero counts remain zero. Dry runs preview a request without inference
+and have no response stats.
 
 ## Images and Box
 
@@ -228,7 +255,7 @@ codex mcp add decision -- /absolute/path/to/decision mcp
 ```
 
 The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns structured
-answers, model, and usage with an output schema. Forward the selected credential
+answers, model, usage, and `duration_ms` with an output schema. Forward the selected credential
 variable and its selector in Codex's MCP environment settings. Provider routing,
 key selection, and timeout are fixed server configuration; tool callers can
 override only the model. Stdout is reserved for protocol messages in MCP mode.

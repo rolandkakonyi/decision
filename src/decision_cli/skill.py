@@ -70,6 +70,14 @@ codes: 0 success/dry run, 1 provider failure, 2 invalid input/missing credential
 130 interruption. A failure is never a negative judgment. The default timeout
 is 30 seconds, and requests are not automatically retried.
 
+Every successful CLI/MCP evaluation includes `usage.input_tokens`,
+`usage.output_tokens`, and `duration_ms`. Readable CLI output always shows token
+counts and duration. Unreported token counts are `null` in JSON/MCP and shown
+as unavailable in readable output; zero remains zero. Duration uses a monotonic
+clock around SDK setup, image upload, and provider response handling. Stats
+cover the entire batch, excluding process startup and local file validation.
+Dry runs have no response stats because no provider request is sent.
+
 ## Images and Box
 
 ```bash
@@ -147,7 +155,7 @@ depends on the execution environment's network settings.
 `decision mcp` serves one STDIO tool, `evaluate({state, questions, model?, assets?})`.
 Prefer this tool when available for structured code-mode composition. Named
 questions share one request just as in the CLI. Success returns
-`structuredContent` with answers, model, and usage and a declared output schema;
+`structuredContent` with answers, model, usage, and `duration_ms`, with a declared output schema;
 failures set `isError` and return no answer. MCP remains structured regardless
 of the CLI output default. Stdout is reserved for MCP protocol
 messages. Base URL, key selection, and timeout remain server configuration, and
@@ -235,6 +243,8 @@ EXAMPLES_GUIDE = '''# Worked examples
 Use your own PNG or JPEG image named `dog.jpg`. Image limits and provider
 settings are described in SKILL.md. These commands use Jev 1.14 explicitly.
 Output is human-readable by default; append `--json` for structured output.
+Every successful query includes input/output token counts in `usage` and
+elapsed request time in `duration_ms`, for the whole batch.
 
 ## Choice: select a breed
 
@@ -388,6 +398,8 @@ This uses the same three named questions as the CLI example. MCP accepts
 base64 assets, not local file paths, and returns structured answers regardless
 of the CLI output preference. Read `structuredContent.answers.dog_present`,
 `structuredContent.answers.dog_location`, and `structuredContent.answers.breed`.
+Read token counts from `structuredContent.usage` and elapsed milliseconds from
+`structuredContent.duration_ms`.
 '''
 
 EXAMPLES_GUIDE = EXAMPLES_GUIDE.replace(

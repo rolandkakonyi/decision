@@ -33,12 +33,15 @@ class ImageAndOutputTests(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def test_default_output_and_json_flag_positions(self):
-        result = {"model": "fixture", "answers": {"answer": {"type": "noul", "noul": 0.9}}, "usage": {"input_tokens": 5}}
+        result = {"model": "fixture", "answers": {"answer": {"type": "noul", "noul": 0.9}},
+                  "usage": {"input_tokens": 5, "output_tokens": None}, "duration_ms": 123.456}
         with patch.object(cli, "evaluate_request", return_value=result):
             code, out, _ = self.invoke("noul", "Is it red?", "--state", "Red")
             self.assertEqual(code, 0)
             self.assertIn("Yes probability: 90.0%", out)
             self.assertIn("Usage: 5 input tokens", out)
+            self.assertIn("output tokens unavailable", out)
+            self.assertIn("Duration: 123.456 ms", out)
             for argv in (("--json", "noul", "Question?", "--state", "x"),
                          ("noul", "Question?", "--state", "x", "--json")):
                 code, out, _ = self.invoke(*argv)
@@ -49,13 +52,21 @@ class ImageAndOutputTests(unittest.TestCase):
         self.assertIn("Request preview (not sent)", out)
 
     def test_human_output_includes_all_answer_types(self):
-        rendered = render_result({"model": "fixture", "usage": {}, "answers": {
+        rendered = render_result({"model": "fixture", "usage": {}, "duration_ms": 10.5, "answers": {
             "team": {"type": "choice", "choice": "billing", "confidence": 0.8, "probabilities": {"billing": 0.9, "tech": 0.1}},
             "severity": {"type": "score", "score": 1.6, "confidence": 0.7, "legend": {"0": "Low", "1": "High"}, "probabilities": {"0": 0.2, "1": 0.8}},
             "target": {"type": "box", "box": {"left": 0.1, "top": 0.2, "right": 0.8, "bottom": 0.9}, "confidence": None},
         }})
         for expected in ("Choice: billing", "billing: 90.0%", "Score: 1.6", "High: 80.0%", "Box: left=0.1, top=0.2", "Confidence: 80.0%"):
             self.assertIn(expected, rendered)
+        self.assertIn("Usage: input tokens unavailable, output tokens unavailable", rendered)
+        self.assertIn("Duration: 10.500 ms", rendered)
+
+    def test_zero_token_counts_and_duration_are_visible(self):
+        rendered = render_result({"model": "fixture", "answers": {},
+                                  "usage": {"input_tokens": 0, "output_tokens": 0}, "duration_ms": 0})
+        self.assertIn("Usage: 0 input tokens, 0 output tokens", rendered)
+        self.assertIn("Duration: 0.000 ms", rendered)
 
     def test_cli_images_attach_without_text_and_resolve_request_relative_paths(self):
         with tempfile.TemporaryDirectory() as directory:

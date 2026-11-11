@@ -51,7 +51,7 @@ DECISION_TEST_EXECUTABLE="$PWD/.state/decision-dist/decision" \
 
 These exercise initialization, tool discovery, input/output schemas, batches of
 typed questions in one provider call, PNG multipart uploads through CLI and MCP,
-human/JSON output, custom provider credentials, and recovery from errors without
+human/JSON output with token usage and duration, custom provider credentials, and recovery from errors without
 inference. The test runner needs Python and
 the SDKs; the tested executable does not. Check a copied executable from an
 unrelated directory without Python or uv on PATH as a startup smoke test.
