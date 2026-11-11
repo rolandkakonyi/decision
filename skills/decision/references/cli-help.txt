@@ -1,138 +1,72 @@
-usage: decision [-h] [--version] {skill,noul,choice,score,ask,run,mcp} ...
+decision command reference
 
-Ask typed questions through a System One compatible API.
+decision
+  -h, --help: show this help message and exit
+  --version: show program's version number and exit
 
-positional arguments:
-  {skill,noul,choice,score,ask,run,mcp}
-    skill               Print or export the companion Agent Skill; no API
-                        access
+decision skill
+  -h, --help: show this help message and exit
+  --output OUTPUT: Write SKILL.md and references into this directory
+  --check: Verify an exported skill matches this tool
 
-options:
-  -h, --help            show this help message and exit
-  --version             show program's version number and exit
+decision noul
+  -h, --help: show this help message and exit
+  question: Required.
+  --state STATE: Literal text context
+  --state-file STATE_FILE: JSON state file; - reads stdin
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --dry-run: Print request JSON without network or credentials
 
-usage: decision skill [-h] [--output OUTPUT] [--check]
+decision choice
+  -h, --help: show this help message and exit
+  question: Required.
+  --state STATE: Literal text context
+  --state-file STATE_FILE: JSON state file; - reads stdin
+  --option OPTION: Required. NAME=description; repeat
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --dry-run: Print request JSON without network or credentials
 
-options:
-  -h, --help       show this help message and exit
-  --output OUTPUT  Write SKILL.md and references into this directory
-  --check          Verify an exported skill matches this tool
+decision score
+  -h, --help: show this help message and exit
+  question: Required.
+  --state STATE: Literal text context
+  --state-file STATE_FILE: JSON state file; - reads stdin
+  --level LEVEL: Required. Ordered level; repeat
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --dry-run: Print request JSON without network or credentials
 
-usage: decision noul [-h] (--state STATE | --state-file STATE_FILE)
-                     [--model MODEL] [--base-url BASE_URL]
-                     [--api-key-env API_KEY_ENV] [--timeout TIMEOUT]
-                     [--dry-run]
-                     question
+decision ask
+  -h, --help: show this help message and exit
+  --state STATE: Literal text context
+  --state-file STATE_FILE: JSON state file; - reads stdin
+  --questions-file QUESTIONS_FILE: Required. JSON object of named questions; - reads stdin
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --dry-run: Print request JSON without network or credentials
 
-positional arguments:
-  question
+decision run
+  -h, --help: show this help message and exit
+  request_file: Required. JSON object with shared state and named questions; - reads stdin
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:
+  --dry-run: Print request JSON without network or credentials
 
-options:
-  -h, --help            show this help message and exit
-  --state STATE         Literal text context
-  --state-file STATE_FILE
-                        JSON state file; - reads stdin
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
-  --dry-run             Print request JSON without network or credentials
-
-usage: decision choice [-h] (--state STATE | --state-file STATE_FILE) --option
-                       OPTION [--model MODEL] [--base-url BASE_URL]
-                       [--api-key-env API_KEY_ENV] [--timeout TIMEOUT]
-                       [--dry-run]
-                       question
-
-positional arguments:
-  question
-
-options:
-  -h, --help            show this help message and exit
-  --state STATE         Literal text context
-  --state-file STATE_FILE
-                        JSON state file; - reads stdin
-  --option OPTION       NAME=description; repeat
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
-  --dry-run             Print request JSON without network or credentials
-
-usage: decision score [-h] (--state STATE | --state-file STATE_FILE) --level
-                      LEVEL [--model MODEL] [--base-url BASE_URL]
-                      [--api-key-env API_KEY_ENV] [--timeout TIMEOUT]
-                      [--dry-run]
-                      question
-
-positional arguments:
-  question
-
-options:
-  -h, --help            show this help message and exit
-  --state STATE         Literal text context
-  --state-file STATE_FILE
-                        JSON state file; - reads stdin
-  --level LEVEL         Ordered level; repeat
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
-  --dry-run             Print request JSON without network or credentials
-
-usage: decision ask [-h] (--state STATE | --state-file STATE_FILE)
-                    --questions-file QUESTIONS_FILE [--model MODEL]
-                    [--base-url BASE_URL] [--api-key-env API_KEY_ENV]
-                    [--timeout TIMEOUT] [--dry-run]
-
-options:
-  -h, --help            show this help message and exit
-  --state STATE         Literal text context
-  --state-file STATE_FILE
-                        JSON state file; - reads stdin
-  --questions-file QUESTIONS_FILE
-                        JSON object of named questions; - reads stdin
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
-  --dry-run             Print request JSON without network or credentials
-
-usage: decision run [-h] [--model MODEL] [--base-url BASE_URL]
-                    [--api-key-env API_KEY_ENV] [--timeout TIMEOUT]
-                    [--dry-run]
-                    request_file
-
-positional arguments:
-  request_file          JSON object with shared state and named questions; -
-                        reads stdin
-
-options:
-  -h, --help            show this help message and exit
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
-  --dry-run             Print request JSON without network or credentials
-
-usage: decision mcp [-h] [--model MODEL] [--base-url BASE_URL]
-                    [--api-key-env API_KEY_ENV] [--timeout TIMEOUT]
-
-options:
-  -h, --help            show this help message and exit
-  --model MODEL
-  --base-url BASE_URL
-  --api-key-env API_KEY_ENV
-                        Environment variable holding the provider key
-                        (default: DECISION_API_KEY_ENV)
-  --timeout TIMEOUT
+decision mcp
+  -h, --help: show this help message and exit
+  --model MODEL:
+  --base-url BASE_URL:
+  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
+  --timeout TIMEOUT:

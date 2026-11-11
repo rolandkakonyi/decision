@@ -139,16 +139,35 @@ EXAMPLE = {
 }
 
 
-def skill_files(cli, version, schema):
-    help_sections = [cli.format_help()]
+def command_reference(cli):
+    """Render definitions without argparse's Python/terminal-dependent layout."""
+    lines = ["decision command reference", ""]
+    commands = []
     for action in cli._actions:
         if isinstance(action, argparse._SubParsersAction):
-            help_sections.extend(parser.format_help() for parser in action.choices.values())
+            commands.extend(action.choices.items())
+    for name, parser in [("", cli), *commands]:
+        lines.append("decision" + (" " + name if name else ""))
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                continue
+            label = ", ".join(action.option_strings) if action.option_strings else action.dest
+            if action.option_strings and action.nargs != 0:
+                label += " " + (action.metavar or action.dest.upper())
+            details = action.help or ""
+            if action.required:
+                details = "Required. " + details
+            lines.append(f"  {label}: {details}".rstrip())
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def skill_files(cli, version, schema):
     return {
         "SKILL.md": GUIDANCE.replace("@VERSION@", version),
         "references/request.json": json.dumps(EXAMPLE, indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
-        "references/cli-help.txt": "\n".join(help_sections),
+        "references/cli-help.txt": command_reference(cli),
     }
 
 

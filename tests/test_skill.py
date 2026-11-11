@@ -25,7 +25,8 @@ class SkillTests(unittest.TestCase):
     def test_generation_ignores_provider_settings_and_credentials(self):
         expected = skill_files(cli.parser(), cli.VERSION, cli.request_schema())
         with patch.dict(os.environ, {"DECISION_BASE_URL": "invalid-url",
-                                    "DECISION_API_KEY_ENV": "PRIVATE_VAR", "PRIVATE_VAR": "do-not-export-credential"}), \
+                                    "DECISION_API_KEY_ENV": "PRIVATE_VAR", "PRIVATE_VAR": "do-not-export-credential",
+                                    "COLUMNS": "25", "FORCE_COLOR": "1"}), \
                 patch.object(cli, "evaluate_request", side_effect=AssertionError("no provider calls")):
             actual = skill_files(cli.parser(), cli.VERSION, cli.request_schema())
             self.assertEqual(expected, actual)
