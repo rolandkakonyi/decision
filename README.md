@@ -1,4 +1,8 @@
+![decision: typed judgments via CLI and MCP on text and images](docs/assets/decision-banner.png)
+
 # decision
+
+[![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 
 One command for typed judgments from Jev or compatible System One providers.
 The same executable supports terminal commands, a STDIO MCP server, and
