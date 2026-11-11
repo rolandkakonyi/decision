@@ -72,7 +72,7 @@ class ImageAndOutputTests(unittest.TestCase):
             request.write_text(json.dumps(payload))
             code, out, err = self.invoke("run", str(request), "--dry-run", "--json")
             self.assertEqual(code, 0, err)
-            self.assertEqual(json.loads(out)["assets"]["<photo>"]["path"], str(photo))
+            self.assertEqual(json.loads(out)["assets"]["<photo>"]["path"], str(photo.resolve()))
             code, out, err = self.invoke("noul", "Question?", "--image", str(photo), "--image", str(photo), "--dry-run")
             self.assertEqual(code, 0, err)
             self.assertIn("<decision-image:image_2>", out)
