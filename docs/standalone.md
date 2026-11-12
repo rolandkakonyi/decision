@@ -26,6 +26,18 @@ uv run --locked --group build python scripts/build_standalone.py --output .state
 The last command waits for an MCP client on stdin. Register that executable with
 `codex mcp add decision -- /absolute/path/to/decision mcp`.
 
+The same executable generates skills and Codex plugins without Python:
+
+```bash
+/absolute/path/to/decision plugin --output /private/decision-plugin --integration mcp \
+  --mcp-command /absolute/path/to/decision
+/absolute/path/to/decision plugin --output /private/decision-cli-plugin --integration cli
+```
+
+MCP exports reference that executable; they do not copy it into the plugin.
+CLI exports expect `decision` on PATH. Install the generated local marketplace
+explicitly as described in [the plugin guide](../skills/decision/references/plugin.md).
+
 Repeated builds can reuse PyInstaller's processed-library cache:
 
 ```bash
@@ -52,7 +64,8 @@ DECISION_TEST_EXECUTABLE="$PWD/.state/decision-dist/decision" \
 These exercise TypeSafe, OpenAI, and Cloudflare transports, initialization, tool discovery, input/output schemas, batches of
 typed questions in one provider call, PNG multipart uploads for TypeSafe and inline images for OpenAI through CLI and MCP,
 human/JSON output with token usage and duration, custom provider credentials, and recovery from errors without
-inference. The test runner needs Python and
+inference. They also verify both plugin exports and a real MCP exchange launched
+from the generated configuration. The test runner needs Python and
 the SDKs; the tested executable does not. Check a copied executable from an
 unrelated directory without Python or uv on PATH as a startup smoke test.
 

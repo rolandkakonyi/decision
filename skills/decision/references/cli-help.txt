@@ -10,6 +10,14 @@ decision skill
   --output OUTPUT: Write SKILL.md and references into this directory
   --check: Verify an exported skill matches this tool
 
+decision plugin
+  -h, --help: show this help message and exit
+  --output OUTPUT: Required. Directory receiving the generated marketplace and plugins/decision package
+  --integration INTEGRATION: Use installed CLI commands or bundle a STDIO MCP declaration (default: mcp)
+  --mcp-command MCP_COMMAND: MCP executable name or absolute path, without arguments (default: decision on PATH)
+  --env-var NAME: Additional environment variable name to forward to MCP; repeat for custom provider keys
+  --check: Verify the generated plugin matches this tool and integration options
+
 decision noul
   -h, --help: show this help message and exit
   question: Required.

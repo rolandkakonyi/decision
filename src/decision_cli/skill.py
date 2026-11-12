@@ -29,6 +29,10 @@ the executable. Install it separately from the private
 standalone executable or with `uv tool install /path/to/decision`. See its
 [build guide](https://github.com/rolandkakonyi/decision/blob/main/docs/standalone.md).
 Do not silently install or change the user's MCP settings as part of a query.
+To package this skill as a Codex plugin, use `decision plugin --output DIR`
+with `--integration cli` or `--integration mcp` (default). Read
+`references/plugin.md` for local installation, executable selection, environment
+forwarding, refresh, and `--check` instructions. Generation does not install it.
 
 ## Multiple questions, one provider request
 
@@ -226,6 +230,7 @@ already-sent provider request; its timeout still bounds it.
 ## References
 
 - `references/cli-help.txt`: generated command and flag reference.
+- `references/plugin.md`: generate and install a Codex plugin using CLI or MCP integration.
 - `references/request-schema.json`: default TypeSafe MCP batch schema from the
   running tool; OpenAI and Cloudflare MCP servers narrow this schema. CLI accepts local image paths.
 - `references/request.json`: synthetic batch example; copy it before editing.
@@ -562,6 +567,8 @@ def command_reference(cli):
 
 
 def skill_files(cli, version, schema):
+    from decision_cli.plugin import GUIDE
+
     return {
         "SKILL.md": GUIDANCE.replace("@VERSION@", version),
         "references/request.json": json.dumps(EXAMPLE, indent=2) + "\n",
@@ -577,6 +584,7 @@ def skill_files(cli, version, schema):
         "references/cloudflare-dog-questions.json": json.dumps(CLOUDFLARE_DOG_EXAMPLE["questions"], indent=2) + "\n",
         "references/request-schema.json": json.dumps(schema, indent=2) + "\n",
         "references/cli-help.txt": command_reference(cli),
+        "references/plugin.md": GUIDE,
     }
 
 

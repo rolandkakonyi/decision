@@ -17,6 +17,7 @@ CI verifies commits and does not publish releases or create tags.
 | Provider errors | `src/decision_cli/errors.py` | Only safe, locally written failure messages reach the user; never expose provider response bodies. |
 | Terminal output | `src/decision_cli/output.py` | Human-readable query output by default; `--json` forces JSON. Every successful result preserves provider token usage and adds client-measured `duration_ms` for the batch. Unknown counts stay null, zero counts stay zero. Diagnostics use stderr. MCP stdout is protocol only. |
 | Skill export | `src/decision_cli/skill.py` | Generated command/schema references reflect the running tool. Generation needs no credentials or provider access. |
+| Codex plugin export | `src/decision_cli/plugin.py` | Package the generated skill with CLI or MCP integration and a local marketplace. CLI exports declare no server; MCP exports forward variable names only, never values. Generation must ignore ambient settings and perform no installation or inference. Switching modes removes stale MCP configuration; content changes alter the cache version. Preserve unmanaged files and reject symlinks. |
 | Wheel verification | `scripts/verify_wheel.py` | Install the built wheel in a fresh venv outside the checkout; test installed CLI, skill, image uploads, and MCP against a local provider fixture. |
 | Standalone build | `scripts/build_standalone.py` | Build for the host OS/architecture, bundle SDKs, produce a checksum. Optional cache reuses processed libraries; analysis and spec files start fresh. |
 | Tests | `tests/test_decision.py`, `tests/test_images.py`, `tests/test_*mcp.py`, `tests/test_*provider.py`, `tests/test_examples.py` | Request/output contracts; image validation; all CLI/MCP provider fixtures; OpenAI/Clef mapping and limits; documented examples. `tests/transport.py` shares source/wheel/standalone isolation. No paid inference. |
@@ -34,6 +35,9 @@ Start with `uv sync --locked`. Use the narrow check for the area being changed:
 | Clef mapping and configuration | `uv run --locked python -m unittest discover -s tests -p test_cloudflare_provider.py -v` |
 | All provider transports and MCP | `uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v` |
 | Skill examples | `uv run --locked python -m unittest discover -s tests -p test_examples.py -v` |
+| Plugin generation | `uv run --locked python -m unittest discover -s tests -p test_plugin.py -v` |
+| Generated MCP launch | `uv run --locked python -m unittest discover -s tests -p test_plugin_mcp.py -v` |
+| Native Codex plugin | With Codex CLI installed: `uv run --locked python -m unittest discover -s tests -p test_codex_plugin.py -v` |
 | Packaging, dependencies, entry points | `uv run --locked python scripts/verify_wheel.py` |
 | Standalone/runtime loading | Build and run the compiled transport tests below. |
 
@@ -55,7 +59,9 @@ DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
 ```
 
 CI runs source checks on Python 3.11/3.14 and macOS, a clean Linux wheel install,
-and native Linux/macOS standalone checks. See `.github/workflows/ci.yml` and
+and native Linux/macOS standalone checks. A dedicated job installs both plugin
+integration modes into isolated Codex homes and verifies skill/MCP discovery
+without inference. See `.github/workflows/ci.yml` and
 `docs/standalone.md`. Build on each target OS/architecture. Test without live
 inference unless the user authorized the provider, data, and experimentation budget.
 

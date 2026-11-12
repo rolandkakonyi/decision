@@ -6,7 +6,7 @@
 
 One command for typed judgments from Jev, OpenAI Decisions, Cloudflare Clef, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
-generation of its own companion Agent Skill.
+generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
 
 ```bash
 uv sync --locked
@@ -27,7 +27,7 @@ This repository is private. Installations and updates require access to it.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling version 0.7.0, reinstall a non-editable local install
+edits live. After pulling version 0.8.0, reinstall a non-editable local install
 with `uv tool install --force .`.
 
 ## Ask several questions together
@@ -378,6 +378,53 @@ Forward `OPENAI_API_KEY` for the official OpenAI host, or the selected credentia
 variable and `DECISION_API_KEY_ENV` for another host.
 For Cloudflare, forward `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
+## Generate a Codex plugin
+
+Choose how Codex invokes decision:
+
+```bash
+decision plugin --output "$PWD/.state/decision-cli" --integration cli
+decision plugin --output "$PWD/.state/decision-mcp" --integration mcp
+```
+
+Both exports include the generated skill, examples, and schemas. **CLI** mode
+uses the installed `decision` command and declares no MCP server. **MCP** mode
+(the default) also declares a STDIO server running `decision mcp` and directs
+the skill to its `evaluate` tool. The executable must be installed separately
+on each host; a plugin export does not bundle a binary or dependencies.
+
+The output is a local marketplace containing `plugins/decision/`. To install
+the MCP export explicitly:
+
+```bash
+codex plugin marketplace add "$PWD/.state/decision-mcp"
+codex plugin add decision@decision-local
+```
+
+Start a new Codex session. Set provider/model/base URL/key-selector variables in
+Codex's environment; standard credential and Cloudflare account-ID variable
+names are forwarded to the MCP process. Values are never written to the export.
+For a custom key or a native binary outside PATH:
+
+```bash
+decision plugin --output "$PWD/.state/decision-mcp" --integration mcp \
+  --mcp-command /absolute/path/to/decision --env-var MY_PROVIDER_KEY
+```
+
+Set `DECISION_API_KEY_ENV=MY_PROVIDER_KEY` and `MY_PROVIDER_KEY` in Codex's
+environment. `--env-var` is repeatable and applies only to MCP. The generator
+ignores current environment values and does not load `.env` files, contact a
+provider, register the marketplace, or change Codex settings.
+
+Repeat the original export options with `--check` to verify freshness. Switching
+the same output from MCP to CLI removes the old MCP declaration. Regenerate,
+run `codex plugin marketplace upgrade decision-local`, then
+`codex plugin add decision@decision-local` to refresh, and start a new session.
+Both modes use the ID `decision@decision-local`; select one output per host.
+The package version changes when generated content or launch settings change.
+Exports refuse unmanaged files and symlinks. See the generated
+[plugin guide](skills/decision/references/plugin.md) for the complete workflow.
+
 ## Generated skill
 
 ```bash
@@ -421,7 +468,7 @@ installs outside the checkout and tests CLI, skill generation, images, and MCP.
 See [AGENTS.md](AGENTS.md) for the module map, contracts, and narrow checks.
 
 CI runs the source suite on Linux with Python 3.11/3.14 and macOS with 3.14,
-plus separate wheel and native Linux/macOS standalone jobs. uv/Python and
+plus separate wheel, isolated native Codex plugin, and Linux/macOS standalone jobs. uv/Python and
 PyInstaller library caches reduce repeated downloads and processing; build
 outputs are always regenerated. Other platforms require native builds and
 testing. Dependencies are recorded in `uv.lock`. Work goes directly to `main`;

@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from decision_cli.errors import ProviderError
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 
 
 def read_json(path):
@@ -29,6 +29,12 @@ def parser():
     skill = commands.add_parser("skill", help="Print or export the companion Agent Skill; no API access")
     skill.add_argument("--output", type=Path, help="Write SKILL.md and references into this directory")
     skill.add_argument("--check", action="store_true", help="Verify an exported skill matches this tool")
+    plugin = commands.add_parser("plugin", help="Export a Codex plugin and local marketplace; no API access")
+    plugin.add_argument("--output", type=Path, required=True, help="Directory receiving the generated marketplace and plugins/decision package")
+    plugin.add_argument("--integration", choices=("cli", "mcp"), default="mcp", help="Use installed CLI commands or bundle a STDIO MCP declaration (default: mcp)")
+    plugin.add_argument("--mcp-command", default="decision", help="MCP executable name or absolute path, without arguments (default: decision on PATH)")
+    plugin.add_argument("--env-var", action="append", default=[], metavar="NAME", help="Additional environment variable name to forward to MCP; repeat for custom provider keys")
+    plugin.add_argument("--check", action="store_true", help="Verify the generated plugin matches this tool and integration options")
     for name in ("noul", "choice", "score", "box", "ask", "run", "mcp"):
         sub = commands.add_parser(name)
         if name in {"noul", "choice", "score", "box"}:
@@ -350,6 +356,14 @@ def main(argv=None):
             from decision_cli.skill import export_skill, skill_files
 
             export_skill(skill_files(cli, VERSION, request_schema()), args.output, args.check)
+            return 0
+        if args.command == "plugin":
+            from decision_cli.plugin import export_plugin, plugin_files
+            from decision_cli.skill import skill_files
+
+            files = plugin_files(skill_files(cli, VERSION, request_schema()), VERSION,
+                                 args.integration, args.mcp_command, args.env_var)
+            export_plugin(files, args.output, args.check)
             return 0
         validate_connection(args)
         if args.command == "mcp":

@@ -34,6 +34,28 @@ jobs:
       - run: uv run --locked decision skill --output skills/decision --check
       - run: uv run --locked python -m unittest discover -s tests -v
 
+  plugin:
+    name: Native Codex plugin installation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+          cache-suffix: plugin-3.14
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.npm
+          key: npm-codex-${{ runner.os }}-0.163.0
+      - run: npm install --global @openai/codex@0.163.0
+      - run: uv sync --locked
+      - run: uv run --locked python -m unittest discover -s tests -p test_codex_plugin.py -v
+
   wheel:
     name: Clean wheel installation
     runs-on: ubuntu-latest
