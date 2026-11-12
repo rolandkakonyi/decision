@@ -103,3 +103,46 @@ jobs:
           DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/.state/dist/decision
           DECISION_TEST_MODE: standalone
         run: uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
+
+  release:
+    name: GitHub release
+    needs: [source, plugin, wheel, standalone]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.14'
+      - name: Check whether the package version is released
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(python -c 'import pathlib, tomllib; print("v" + tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+          else
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build release distributions
+        if: steps.version.outputs.tag != ''
+        run: uv build --out-dir .state/release
+      - name: Publish release
+        if: steps.version.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$RELEASE_TAG" -f target_commitish="$GITHUB_SHA" \
+            --jq .body > .state/release-notes.md
+          gh release create "$RELEASE_TAG" .state/release/*.whl .state/release/*.tar.gz \
+            --target "$GITHUB_SHA" --title "$RELEASE_TAG" \
+            --notes-file .state/release-notes.md

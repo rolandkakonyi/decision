@@ -24,7 +24,7 @@ prose explanations or researched answers. Keep policy and actions in code.
 ## Prerequisites
 
 Run `decision --version` to confirm installation. This skill does not include
-the executable. Install it separately from the private
+the executable. Install it separately from the
 [decision repository](https://github.com/rolandkakonyi/decision), either as a
 standalone executable or with `uv tool install /path/to/decision`. See its
 [build guide](https://github.com/rolandkakonyi/decision/blob/main/docs/standalone.md).

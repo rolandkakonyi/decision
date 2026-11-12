@@ -9,25 +9,28 @@ The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
 
 ```bash
+git clone https://github.com/rolandkakonyi/decision.git
+cd decision
 uv sync --locked
-uv run decision run examples/request.json --dry-run
-uv run decision mcp
-uv run decision skill --output skills/decision
+uv run --locked decision run examples/request.json --dry-run
+uv run --locked decision mcp
+uv run --locked decision skill --output skills/decision
 ```
 
-Install on PATH with `uv tool install /path/to/decision`, or build a standalone
-executable using [the build guide](docs/standalone.md). For a remote install,
-use existing GitHub authentication and pin a reviewed commit:
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+Install on PATH from a [release tag](https://github.com/rolandkakonyi/decision/releases):
 
 ```bash
-uv tool install 'git+https://github.com/rolandkakonyi/decision.git@<commit-sha>'
+uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.8.1'
 ```
 
-This repository is private. Installations and updates require access to it.
+Release assets also include an installable wheel and source distribution.
+To build a standalone executable, use [the build guide](docs/standalone.md).
+For a local install, use `uv tool install /path/to/decision`.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling version 0.8.0, reinstall a non-editable local install
+edits live. After pulling changes, reinstall a non-editable local install
 with `uv tool install --force .`.
 
 ## Ask several questions together
@@ -438,17 +441,9 @@ and command reference. The schema and command reference come from the running
 tool. Edit `src/decision_cli/skill.py` and the CLI definitions, then regenerate.
 CI rejects a stale generated export. No key or provider access is required.
 
-`agent-skills` consumes a generated snapshot pinned to a commit in this repo.
-After committing and pushing a reviewed change here, refresh its snapshot with:
-
-```bash
-python scripts/sync-decision-skill.py --source /path/to/decision
-python scripts/sync-decision-skill.py --check
-```
-
-Run those commands in the `agent-skills` checkout. Its import records the source
-commit and file hashes, retains marketplace/cloud discovery, and contains no
-tool implementation. Installing the skill does not install the executable.
+Installing the skill does not install the executable. The export is portable:
+copy it into a compatible agent's skill directory, and install `decision` on
+that host separately.
 
 ## Development
 
@@ -471,5 +466,12 @@ CI runs the source suite on Linux with Python 3.11/3.14 and macOS with 3.14,
 plus separate wheel, isolated native Codex plugin, and Linux/macOS standalone jobs. uv/Python and
 PyInstaller library caches reduce repeated downloads and processing; build
 outputs are always regenerated. Other platforms require native builds and
-testing. Dependencies are recorded in `uv.lock`. Work goes directly to `main`;
-tags are created manually when needed, with no automatic release workflow.
+testing. Dependencies are recorded in `uv.lock`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and release workflows,
+and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
+## License
+
+Decision is licensed under the [MIT license](LICENSE). Provider accounts and
+inference usage are subject to each provider's separate terms and pricing.

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build and test a clean wheel installation outside the source checkout."""
 
+from email.parser import BytesParser
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import tomllib
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,6 +26,20 @@ def main():
         wheels = list(wheel_dir.glob("*.whl"))
         if len(wheels) != 1:
             raise RuntimeError("Expected exactly one built wheel")
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+        with ZipFile(wheels[0]) as wheel:
+            metadata_path = next(name for name in wheel.namelist() if name.endswith(".dist-info/METADATA"))
+            metadata = BytesParser().parsebytes(wheel.read(metadata_path))
+            if metadata["License-Expression"] != project["license"]:
+                raise RuntimeError("Wheel license metadata does not match the project")
+            if metadata.get_all("License-File") != project["license-files"]:
+                raise RuntimeError("Wheel license file declarations do not match the project")
+            metadata_dir = metadata_path.rsplit("/", 1)[0]
+            for license_file in project["license-files"]:
+                if wheel.read(f"{metadata_dir}/licenses/{license_file}") != (ROOT / license_file).read_bytes():
+                    raise RuntimeError("Wheel license text does not match the project")
+            if metadata.get_payload(decode=True).decode("utf-8").strip() != (ROOT / project["readme"]).read_text().strip():
+                raise RuntimeError("Wheel description does not match the README")
         requirements = temp / "requirements.txt"
         run("uv", "export", "--locked", "--no-dev", "--no-emit-project", "--output-file", str(requirements), capture=True)
         run("uv", "venv", "--python", sys.executable, str(environment))
@@ -39,7 +55,7 @@ def main():
                         cwd=workspace, env=clean, capture=True).stdout.strip()
         if not Path(installed).resolve().is_relative_to(environment.resolve()):
             raise RuntimeError("Wheel import resolved outside the clean installation")
-        expected = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+        expected = project["version"]
         version = run(str(executable), "--version", cwd=workspace, env=clean, capture=True).stdout.strip()
         if version != f"decision {expected}":
             raise RuntimeError("Installed command version does not match the project")

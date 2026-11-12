@@ -52,7 +52,7 @@ Start a new Codex session. Keep the generated directory available as the local
 marketplace source. Each export uses the plugin ID `decision@decision-local`;
 select one output on each host. If changing the source directory, remove the old
 marketplace with `codex plugin marketplace remove decision-local` before adding
-the new one. This is separate from the skill-only agent-skills marketplace.
+the new one.
 
 Configure `DECISION_PROVIDER` (`typesafe`, `openai`, or `cloudflare`),
 `DECISION_MODEL`, `DECISION_BASE_URL`, and `DECISION_API_KEY_ENV` in Codex's

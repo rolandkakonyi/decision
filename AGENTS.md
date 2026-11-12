@@ -1,10 +1,11 @@
 # Decision repository
 
-This private repository owns the decision CLI, embedded STDIO MCP server,
+This repository owns the decision CLI, embedded STDIO MCP server,
 standalone build, tests, and companion-skill generator. Preserve environment-based
 provider and credential-variable overrides. Never commit secrets, environments,
-or binaries. Use direct commits to `main`; create tags manually only when asked.
-CI verifies commits and does not publish releases or create tags.
+or binaries. Use direct commits to `main`. After all checks pass, CI publishes
+a GitHub release and creates a `vVERSION` tag for an unreleased package version
+on `main`. Subsequent releases require a version bump. Do not move or reuse tags.
 
 ## Module and contract map
 
@@ -71,8 +72,7 @@ The generated `skills/decision/` directory is an export, not an edit location.
 Change `src/decision_cli/skill.py` and the command/schema definitions, then run
 `uv run --locked decision skill --output skills/decision` and the checks above.
 
-Generation requires no provider credentials or API access. The agent-skills repo
-imports this generated skill at a reviewed commit and checks file hashes. Keep
+Generation requires no provider credentials or API access. Keep
 the export portable: use the installed `decision` command and relative references,
 never assume this checkout or a sibling skill exists. Do not put tool source or
 machine-specific paths into the generated skill.

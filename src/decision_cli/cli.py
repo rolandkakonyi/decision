@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from decision_cli.errors import ProviderError
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 
 def read_json(path):
