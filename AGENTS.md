@@ -16,11 +16,12 @@ on `main`. Subsequent releases require a version bump. Do not move or reuse tags
 | OpenAI Decisions | `src/decision_cli/openai_provider.py` | Translate common Noul/Choice/Score questions and image references to the native Decisions API. Reject Box and provider limits before network access. Preserve names and reject refusals, duplicate/missing answers, and malformed probability maps for the whole batch. |
 | Cloudflare Clef | `src/decision_cli/cloudflare_provider.py` | Use the account-scoped Workers AI run endpoint for Clef/Clef Flash. Validate the envelope and complete batch; reject Box and question/image/body limits before network access. Send each image once, preserving references with ordered metadata. Never retry or follow redirects. |
 | Provider errors | `src/decision_cli/errors.py` | Only safe, locally written failure messages reach the user; never expose provider response bodies. |
+| Response validation | `src/decision_cli/results.py` | All providers reject out-of-range answers, unoffered choices, incomplete maps, invalid probability totals and negative usage for the whole batch. Probability totals allow 0.02 aggregate rounding error. |
 | Terminal output | `src/decision_cli/output.py` | Human-readable query output by default; `--json` forces JSON. Every successful result preserves provider token usage and adds client-measured `duration_ms` for the batch. Unknown counts stay null, zero counts stay zero. Diagnostics use stderr. MCP stdout is protocol only. |
 | Skill export | `src/decision_cli/skill.py` | Generated command/schema references reflect the running tool. Generation needs no credentials or provider access. |
 | Codex plugin export | `src/decision_cli/plugin.py` | Package the generated skill with CLI or MCP integration and a local marketplace. CLI exports declare no server; MCP exports forward variable names only, never values. Generation must ignore ambient settings and perform no installation or inference. Switching modes removes stale MCP configuration; content changes alter the cache version. Preserve unmanaged files and reject symlinks. |
 | Wheel verification | `scripts/verify_wheel.py` | Install the built wheel in a fresh venv outside the checkout; test installed CLI, skill, image uploads, and MCP against a local provider fixture. |
-| Standalone build | `scripts/build_standalone.py` | Build for the host OS/architecture, bundle SDKs, produce a checksum. Optional cache reuses processed libraries; analysis and spec files start fresh. |
+| Standalone build | `scripts/build_standalone.py` | Build for the host OS/architecture, bundle SDKs and license notices, produce checksums. Optional cache reuses processed libraries; analysis and spec files start fresh. |
 | Tests | `tests/test_decision.py`, `tests/test_images.py`, `tests/test_*mcp.py`, `tests/test_*provider.py`, `tests/test_examples.py` | Request/output contracts; image validation; all CLI/MCP provider fixtures; OpenAI/Clef mapping and limits; documented examples. `tests/transport.py` shares source/wheel/standalone isolation. No paid inference. |
 
 ## Validation
@@ -55,6 +56,8 @@ For packaging/runtime changes and before distributing a standalone executable:
 uv sync --locked --group build
 uv run --locked --group build python scripts/build_standalone.py --output .state/dist
 .state/dist/decision skill --output skills/decision --check
+DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
+  uv run --locked --group build python -m unittest discover -s tests -p test_standalone.py -v
 DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
   uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
 ```

@@ -21,7 +21,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/install
 Install on PATH from a [release tag](https://github.com/rolandkakonyi/decision/releases):
 
 ```bash
-uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.8.1'
+uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.8.2'
 ```
 
 Release assets also include an installable wheel and source distribution.
@@ -236,9 +236,14 @@ breed. Add an `other` criterion when another breed or no dog is a valid outcome.
 ## Provider settings
 
 Set `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` for the default TypeSafe host.
-Choose the wire API with `--provider typesafe` (the default) or
-`--provider openai`, or set `DECISION_PROVIDER`. Both providers use the same
+Choose the wire API with `--provider typesafe` (the default),
+`--provider openai`, or `--provider cloudflare`, or set `DECISION_PROVIDER`. All providers use the same
 question files and normalized answer format.
+
+Answers are validated against the request before any batch is returned.
+Choice and Score probability maps must contain all offered options and sum to
+1 within 0.02, allowing aggregate rounding error. Invalid answers fail the whole
+batch. Provider redirects are not followed.
 
 ### OpenAI Decisions
 

@@ -24,6 +24,11 @@ loader.exec_module(decision)
 
 
 class DecisionTests(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {}, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def invoke(self, *argv):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -90,7 +95,14 @@ class DecisionTests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("typesafe_sdk"), "requires typesafe-sdk==0.7.5")
     def test_batch_duration_uses_monotonic_elapsed_time(self):
         payload = json.loads((ROOT / "examples/request.json").read_text())
-        answers = {name: {"type": question["type"]} for name, question in payload["questions"].items()}
+        answers = {
+            "refund": {"type": "noul", "noul": 0.9},
+            "team": {"type": "choice", "choice": "billing", "confidence": 1,
+                     "probabilities": {"billing": 1, "technical": 0}},
+            "blocking": {"type": "score", "score": 0, "confidence": 1,
+                         "legend": {str(i): level for i, level in enumerate(payload["questions"]["blocking"]["criteria"])},
+                         "probabilities": {"0": 1, "1": 0, "2": 0}},
+        }
         with patch.dict(os.environ, {"DECISION_API_KEY": "fixture-key"}, clear=True), \
                 patch("typesafe_sdk.TypeSafeClient") as sdk, \
                 patch.object(decision.time, "perf_counter", side_effect=[10.0, 10.125]) as clock:

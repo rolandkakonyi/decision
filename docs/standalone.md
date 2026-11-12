@@ -10,9 +10,13 @@ The executable still needs access to its configured provider and credentials.
 Requires `uv` and Python 3.11+ on the build host. The project pins `typesafe-sdk==0.7.5`, `mcp==2.3.0`, and
 `openai==3.49.0`, and `pyinstaller==6.22.3`, with transitive versions in `uv.lock`. The helper
 analyzes imports and produces `decision` (or
-`decision.exe` on Windows) plus `SHA256SUMS` in the chosen output directory.
+`decision.exe` on Windows), `THIRD_PARTY_NOTICES.txt`, and `SHA256SUMS` in the chosen output directory.
 It overwrites the same-named executable on subsequent builds. No credentials
 are embedded; credentials are resolved from the user's environment at runtime.
+License notices for the application, Python runtime, PyInstaller, and recursive
+runtime dependencies are embedded in the executable and supplied as a readable
+sidecar. Missing package notices fail the build. Distribute the notices file
+and matching checksums with the executable.
 
 From the repository root:
 

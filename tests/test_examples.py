@@ -3,6 +3,7 @@
 from contextlib import chdir, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -18,6 +19,11 @@ REFERENCES = Path(__file__).resolve().parents[1] / "skills/decision/references"
 
 
 class DocumentedExamplesTests(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {}, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_all_documented_query_commands_validate_without_inference(self):
         guide = (REFERENCES / "examples.md").read_text()
         commands = []

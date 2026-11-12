@@ -63,6 +63,10 @@ class DecisionTransportTests(unittest.TestCase):
                     answers.pop(next(iter(answers)))
                 if body["state"] == "wrong_type":
                     answers["team"] = {"type": "noul", "noul": 0.5}
+                if body["state"] == "bad_probability":
+                    answers["refund"]["noul"] = 2
+                if body["state"] == "unoffered_choice":
+                    answers["team"]["choice"] = "not-offered"
                 result = {"model": body["model"], "usage": {"input_tokens": 10, "output_tokens": 3}, "answers": answers}
                 if failure:
                     result = {"error": "provider-secret private context"}
@@ -156,7 +160,7 @@ class DecisionTransportTests(unittest.TestCase):
                             "state": "private context", "questions": {"bad": {"type": [], "instructions": "x"}}})
                         self.assertTrue(malformed.is_error)
                         self.assertEqual(len(self.requests), 1)
-                        for state in ("fail", "missing", "wrong_type"):
+                        for state in ("fail", "missing", "wrong_type", "bad_probability", "unoffered_choice"):
                             result = await session.call_tool("evaluate", {**REQUEST, "state": state})
                             self.assertTrue(result.is_error)
                             self.assertIsNone(result.structured_content)
@@ -166,7 +170,7 @@ class DecisionTransportTests(unittest.TestCase):
                         result = await session.call_tool("evaluate", REQUEST)
                         self.assertFalse(result.is_error)
                         self.assert_batch(result.structured_content)
-                        self.assertEqual(len(self.requests), 5)
+                        self.assertEqual(len(self.requests), 7)
                         self.assertEqual(self.requests[-1][2]["model"], "fixture-default")
                 diagnostics.seek(0)
                 self.assertNotIn("provider-secret", diagnostics.read())

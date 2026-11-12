@@ -6,6 +6,7 @@ import math
 
 from decision_cli.errors import ProviderError
 from decision_cli.images import image_format
+from decision_cli.results import validate_result
 
 DEFAULT_MODEL = "gpt-6-luna"
 
@@ -122,16 +123,17 @@ def normalize_response(raw, questions):
 
         result = {"model": raw["model"], "usage": counts, "answers": {name: answers[name] for name in questions}}
         # JSON validation also normalizes integer score keys to the common wire format.
-        return SystemOneResponse.model_validate_json(json.dumps(result, allow_nan=False)).model_dump(mode="json")
+        return validate_result(SystemOneResponse.model_validate_json(json.dumps(result, allow_nan=False)).model_dump(mode="json"), questions)
     except (KeyError, TypeError, ValueError, AttributeError):
         raise ProviderError("OpenAI returned invalid decision data; no answers returned") from None
 
 
 def evaluate(payload, images, args, key):
-    from openai import OpenAI
+    from openai import DefaultHttpxClient, OpenAI
 
     request = build_request(payload, images)
-    with OpenAI(api_key=key, base_url=args.base_url, timeout=args.timeout, max_retries=0) as client:
+    with OpenAI(api_key=key, base_url=args.base_url, timeout=args.timeout, max_retries=0,
+                http_client=DefaultHttpxClient(follow_redirects=False)) as client:
         response = client.decisions.create(**request)
     # A malformed SDK object must not emit serialization warnings containing provider data.
     return normalize_response(response.model_dump(mode="json", warnings=False), payload["questions"])

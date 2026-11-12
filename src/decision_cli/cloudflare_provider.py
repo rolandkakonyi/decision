@@ -6,6 +6,7 @@ import re
 
 from decision_cli.errors import ProviderError
 from decision_cli.images import image_format
+from decision_cli.results import validate_result
 
 API_ROOT = "https://api.cloudflare.com/client/v4"
 DEFAULT_MODEL = "clef"
@@ -139,7 +140,7 @@ def normalize_response(raw, questions):
         from typesafe_sdk import SystemOneResponse
 
         result = {"model": result["model"], "answers": normalized, "usage": counts}
-        return SystemOneResponse.model_validate_json(json.dumps(result, allow_nan=False)).model_dump(mode="json")
+        return validate_result(SystemOneResponse.model_validate_json(json.dumps(result, allow_nan=False)).model_dump(mode="json"), questions)
     except (KeyError, TypeError, ValueError, AttributeError):
         raise ProviderError("Cloudflare returned an unsuccessful or invalid decision response; no answers returned") from None
 

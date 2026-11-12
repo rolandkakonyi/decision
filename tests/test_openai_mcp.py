@@ -27,8 +27,16 @@ class OpenAITransportTests(unittest.TestCase):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 requests.append((self.path, self.headers.get("Authorization"), body))
+                if self.path == "/redirect-target":
+                    raise AssertionError("Redirect target must not receive selected context")
                 state = body["input"][0]["content"][0].get("data", {})
                 mode = state.get("fixture_mode") if isinstance(state, dict) else None
+                if mode == "redirect":
+                    self.send_response(307)
+                    self.send_header("Location", f"http://localhost:{self.server.server_port}/redirect-target")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 answers = []
                 for q in body["questions"]:
                     answer = {"type": q["type"], "name": q["name"]}
@@ -137,7 +145,7 @@ class OpenAITransportTests(unittest.TestCase):
         self.assertEqual((result.returncode, result.stdout), (2, ""))
         self.assertIn("does not support Box", result.stderr)
         self.assertEqual(self.requests, [])
-        for mode in ("http", "refusal", "missing", "duplicate", "invalid"):
+        for mode in ("http", "refusal", "missing", "duplicate", "invalid", "redirect"):
             with self.subTest(mode=mode):
                 before = len(self.requests)
                 result = self.run_cli(["run", "-", "--json"], {"state": {"fixture_mode": mode}, "questions": QUESTIONS})

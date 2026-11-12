@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from decision_cli.errors import ProviderError
 
-VERSION = "0.8.1"
+VERSION = "0.8.2"
 
 
 def read_json(path):
@@ -240,10 +240,9 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
                                 retry=RetryPolicy(max_retries=0), compression=False) as client:
                 response = client.system_one(**payload, **options)
             result = response.model_dump(mode="json")
-        if set(result.get("answers", {})) != set(payload["questions"]):
-            raise ProviderError("Provider returned missing or unexpected question IDs; no answer returned")
-        if any(result["answers"][name]["type"] != question["type"] for name, question in payload["questions"].items()):
-            raise ProviderError("Provider returned unexpected answer types; no answer returned")
+            from decision_cli.results import validate_result
+
+            validate_result(result, payload["questions"])
         result["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
         return result
     except ProviderError:

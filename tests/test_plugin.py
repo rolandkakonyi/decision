@@ -63,6 +63,18 @@ class PluginTests(unittest.TestCase):
             self.assertNotEqual(json.loads(files[MANIFEST])["version"], original)
         self.assertEqual(self.files(env_vars=["CUSTOM_KEY", "CUSTOM_KEY"]), self.files(env_vars=["CUSTOM_KEY"]))
 
+    def test_colliding_unmanaged_files_are_preserved(self):
+        for path in (Path("README.md"), MANIFEST, CATALOG):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("User-owned content\n")
+                with self.assertRaisesRegex(ValueError, "unmanaged"):
+                    export_plugin(self.files(), root)
+                self.assertEqual(target.read_text(), "User-owned content\n")
+                self.assertEqual({p.relative_to(root) for p in root.rglob("*") if p.is_file()}, {path})
+
     def test_switching_modes_removes_stale_mcp_and_checks_detect_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
