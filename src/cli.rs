@@ -204,7 +204,13 @@ pub fn help_text() -> String {
     }
     let mut sections = Vec::new();
     collect(command(), "decision".into(), &mut sections);
-    sections.join("\n\n") + "\n"
+    sections
+        .join("\n\n")
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
 }
 pub fn parse(
     args: impl IntoIterator<Item = OsString>,
