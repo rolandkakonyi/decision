@@ -1,45 +1,11 @@
-[build-system]
-requires = ["hatchling>=1.27,<2"]
-build-backend = "hatchling.build"
-
 [project]
-name = "decision-harness"
-version = "0.9.0"
-description = "Typed judgments through TypeSafe, OpenAI/Gemini Decisions, and Cloudflare Clef, with CLI and MCP"
-readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
-authors = [{ name = "Roland Kákonyi" }]
-maintainers = [{ name = "Roland Kákonyi" }]
+name = "decision-tests"
+version = "0.0.0"
 requires-python = ">=3.11"
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.14",
-]
 dependencies = [
-    "typesafe-sdk==0.7.5",
     "mcp==2.3.0",
-    "openai==3.49.0",
-    "httpx2==2.16.0",
+    "jsonschema==4.26.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/rolandkakonyi/decision"
-Repository = "https://github.com/rolandkakonyi/decision"
-Issues = "https://github.com/rolandkakonyi/decision/issues"
-Documentation = "https://github.com/rolandkakonyi/decision#readme"
-Releases = "https://github.com/rolandkakonyi/decision/releases"
-
-[project.scripts]
-decision = "decision_cli.cli:main"
-
-[dependency-groups]
-build = ["pyinstaller==6.22.3"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/decision_cli"]
+[tool.uv]
+package = false

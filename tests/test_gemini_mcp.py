@@ -62,7 +62,7 @@ class GeminiTransportTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="gemini", DECISION_MODEL="gemini-decision-1",
+        self.environment = isolate(dict(DECISION_PROVIDER="gemini", DECISION_MODEL="gemini-decision-1",
                                        DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/v1beta",
                                        DECISION_API_KEY_ENV="GEMINI_FIXTURE_KEY", GEMINI_FIXTURE_KEY="gemini-fixture-secret",
                                        GEMINI_API_KEY="do-not-forward", GOOGLE_API_KEY="do-not-forward"))

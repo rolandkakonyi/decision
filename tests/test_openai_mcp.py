@@ -1,4 +1,4 @@
-"""Real OpenAI SDK CLI/MCP transport against a local Decisions API fixture."""
+"""Native OpenAI CLI/MCP transport against a local Decisions API fixture."""
 
 import asyncio
 import base64
@@ -17,7 +17,7 @@ from test_openai_provider import QUESTIONS
 from transport import command, working_directory, isolate
 
 
-@unittest.skipUnless(importlib.util.find_spec("openai") and importlib.util.find_spec("mcp"), "requires pinned SDKs")
+@unittest.skipUnless(importlib.util.find_spec("mcp"), "requires the MCP test client")
 class OpenAITransportTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
@@ -78,7 +78,7 @@ class OpenAITransportTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="openai",
+        self.environment = isolate(dict(DECISION_PROVIDER="openai",
                                        DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom/v1",
                                        DECISION_API_KEY_ENV="OPENAI_FIXTURE_KEY", OPENAI_FIXTURE_KEY="openai-fixture-secret",
                                        OPENAI_API_KEY="do-not-forward", TYPESAFEAI_API_KEY="do-not-forward",
