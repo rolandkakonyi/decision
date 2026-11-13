@@ -155,9 +155,6 @@ func TestModelOverrideContract(t *testing.T) {
 			t.Fatal(e)
 		}
 		want := "fixture"
-		if cli {
-			want = "launch-default"
-		}
 		if obj(result)["model"] != want {
 			t.Fatalf("cli=%v model=%v", cli, obj(result)["model"])
 		}
@@ -167,5 +164,79 @@ func TestModelOverrideContract(t *testing.T) {
 	result, e := evaluate(context.Background(), o, nil, r, false, "")
 	if e != nil || obj(result)["model"] != "launch-default" {
 		t.Fatal("missing MCP model did not use launch default", e)
+	}
+}
+
+func TestTypeSafeSDKModelFallback(t *testing.T) {
+	for _, test := range []struct{ name, sdkModel, decisionModel, cliModel, requestModel, want string }{
+		{name: "default", want: "jev-latest"},
+		{name: "sdk", sdkModel: " sdk-custom ", want: "sdk-custom"},
+		{name: "blank sdk", sdkModel: " \t", want: "jev-latest"},
+		{name: "decision", sdkModel: "sdk-custom", decisionModel: "decision-custom", want: "decision-custom"},
+		{name: "cli", sdkModel: "sdk-custom", decisionModel: "decision-custom", cliModel: "cli-custom", want: "cli-custom"},
+		{name: "request", sdkModel: "sdk-custom", decisionModel: "decision-custom", cliModel: "cli-custom", requestModel: "request-custom", want: "request-custom"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("TYPESAFE_DEFAULT_MODEL", test.sdkModel)
+			t.Setenv("DECISION_MODEL", test.decisionModel)
+			t.Setenv("FIXTURE_KEY", "fixture-key")
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				body, e := io.ReadAll(r.Body)
+				if e != nil {
+					t.Error(e)
+					return
+				}
+				wire := obj(mustDecode(t, string(body)))
+				if wire["model"] != test.want {
+					t.Errorf("wire model = %v, want %s", wire["model"], test.want)
+				}
+				result := obj(mustDecode(t, validResponse))
+				result["model"] = wire["model"]
+				w.Write(encoded(result))
+			}))
+			defer server.Close()
+			opts, pos, _, e := parseOptions(func() []string {
+				if test.cliModel != "" {
+					return []string{"--model", test.cliModel}
+				}
+				return nil
+			}())
+			if e != nil || len(pos) != 0 {
+				t.Fatal(e)
+			}
+			opts.base = server.URL
+			opts.keyEnv = "FIXTURE_KEY"
+			makeInput := func() *request {
+				r := mustRequest(t, batch)
+				delete(r.data, "model")
+				if test.requestModel != "" {
+					r.data["model"] = test.requestModel
+				}
+				return r
+			}
+			opts.dry = true
+			preview, e := evaluate(context.Background(), opts, nil, makeInput(), true, "")
+			if e != nil {
+				t.Fatal(e)
+			}
+			if test.decisionModel == "" && test.cliModel == "" && test.requestModel == "" {
+				if _, exists := obj(preview)["model"]; exists {
+					t.Fatal("SDK fallback changed dry-run output")
+				}
+			}
+			if calls != 0 {
+				t.Fatal("dry-run sent a request")
+			}
+			opts.dry = false
+			result, e := evaluate(context.Background(), opts, nil, makeInput(), true, "")
+			if e != nil {
+				t.Fatal(e)
+			}
+			if obj(result)["model"] != test.want || calls != 1 {
+				t.Fatalf("result model = %v, calls = %d", obj(result)["model"], calls)
+			}
+		})
 	}
 }
