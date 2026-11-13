@@ -206,7 +206,10 @@ class MCP:
         return self.request("tools/call", {"name": name, "arguments": arguments})
 
     def __exit__(self, *_):
-        self.process.stdin.close()
+        try:
+            self.process.stdin.close()
+        except BrokenPipeError:
+            pass
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:

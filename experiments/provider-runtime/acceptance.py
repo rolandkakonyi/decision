@@ -1,6 +1,7 @@
 """Run the same black-box provider-runtime contract against either executable."""
 
 import argparse
+import asyncio
 from copy import deepcopy
 import json
 import math
@@ -94,6 +95,8 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertEqual(list(requests[0]["uploads"].values()), [PNG])
         self.assertEqual(requests[0]["opt_in"], "true")
+        part = next(iter(requests[0]["uploads"]))
+        self.assertEqual(requests[0]["body"]["assets"], {"<photo>": {"type": "image", "part": part}})
 
     def test_cli_path_image_and_credential_free_preview(self):
         payload = image_request()
@@ -213,6 +216,20 @@ class Acceptance(unittest.TestCase):
                     self.assertTrue(result.get("isError"))
                     self.assertEqual(len(requests), before)
 
+    def test_mcp_and_plugin_accept_maximum_asset_frame(self):
+        import base64
+        self.install()
+        image = PNG + b"\0" * (16 * 1024 * 1024 - len(PNG))
+        encoded = base64.b64encode(image).decode()
+        payload = deepcopy(REQUEST)
+        payload["state"]["images"] = ["<photo>", "<second-photo>"]
+        payload["assets"] = {name: {"data_base64": encoded, "format": "png"}
+                             for name in ("<photo>", "<second-photo>")}
+        with MCP(self.mcp_command("fixture", "--timeout", "20")) as client:
+            result = client.call("evaluate", payload)
+            self.assertFalse(result.get("isError", False))
+            self.assert_result(structured(result), payload)
+
     def test_management_mcp_install_list_remove_and_new_inference(self):
         with MCP(self.mcp_command("typesafe", "--management")) as manager:
             tools = manager.request("tools/list", {})["tools"]
@@ -228,6 +245,26 @@ class Acceptance(unittest.TestCase):
                 self.assert_result(structured(result))
             result = manager.call("provider_remove", {"name": "fixture"})
             self.assertTrue(structured(result)["removed"])
+
+    def test_official_mcp_client_accepts_management_results(self):
+        from mcp import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        async def check():
+            command = self.mcp_command("typesafe", "--management")
+            params = StdioServerParameters(command=command[0], args=command[1:], env=self.env)
+            with tempfile.TemporaryFile(mode="w+") as diagnostics:
+                async with stdio_client(params, errlog=diagnostics) as (read, write):
+                    async with ClientSession(read, write, read_timeout_seconds=20) as session:
+                        await session.initialize()
+                        tools = (await session.list_tools()).tools
+                        self.assertEqual({tool.name for tool in tools}, {"provider_install", "provider_list", "provider_remove"})
+                        for name, args in (("provider_install", {"source": str(self.source)}),
+                                           ("provider_list", {}), ("provider_remove", {"name": "fixture"})):
+                            result = await session.call_tool(name, args)
+                            self.assertFalse(result.is_error)
+                            self.assertTrue(result.content or result.structured_content)
+        asyncio.run(check())
 
     def test_running_mcp_keeps_pinned_artifact_after_update_and_remove(self):
         self.install()
@@ -306,7 +343,8 @@ def main():
     suite = unittest.TestSuite([Acceptance(args.test)]) if args.test else unittest.defaultTestLoader.loadTestsFromTestCase(Acceptance)
     result = unittest.TextTestRunner(verbosity=2, resultclass=RecordingResult).run(suite)
     report = {"binary": BINARY, "tests_run": result.testsRun, "passed": result.wasSuccessful(),
-              "failures": len(result.failures), "errors": len(result.errors), "outcomes": result.outcomes}
+              "failures": len(result.failures), "errors": len(result.errors), "outcomes": result.outcomes,
+              "failure_details": [{"test": str(test), "detail": detail} for test, detail in result.failures + result.errors]}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n")

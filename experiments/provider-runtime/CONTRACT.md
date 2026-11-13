@@ -159,10 +159,12 @@ Measure executable bytes, compressed distribution bytes, --version startup,
 credential-free dry-run startup, MCP initialize+tools/list, TypeSafe loopback
 batch/image evaluation and external-plugin evaluation. Record warmups separately,
 at least five alternating Python/Go runs, host/tool versions, exact artifact
-hashes and canonical output hashes for each run. Remove only documented volatile
-fields such as duration_ms and server-identification strings when canonicalizing;
-never ignore missing answers, changed types, probability/usage differences or
-input schemas. Keep first-launch observations separate: these are not controlled
+hashes and canonical output hashes for each run. For evaluation, canonicalize
+elapsed duration and integral answer-number formatting; never ignore missing
+answers, changed types, or probability/usage differences. MCP readiness hashes the
+negotiated protocol and full tool names/input/output schemas; retain informational
+server metadata and descriptions in raw output. Keep first-launch observations
+separate: these are not controlled
 cold-cache experiments. Record memory where comparable and label parent-only
 versus process-tree accounting. Performance claims require behavioral parity;
 partial prototype gaps remain explicit in the decision recommendation.
