@@ -1,0 +1,136 @@
+{
+  "metric": "seconds",
+  "direction": "lower",
+  "warmups": {
+    "baseline": 2,
+    "candidate": 2
+  },
+  "runs": [
+    {
+      "sequence": 1,
+      "variant": "baseline",
+      "value": 0.089028791,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-1-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 2,
+      "variant": "candidate",
+      "value": 0.088127792,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-1-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 3,
+      "variant": "baseline",
+      "value": 0.0890435,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-2-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 4,
+      "variant": "candidate",
+      "value": 0.07932125,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-2-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 5,
+      "variant": "baseline",
+      "value": 0.083352083,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-3-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 6,
+      "variant": "candidate",
+      "value": 0.096469,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-3-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 7,
+      "variant": "baseline",
+      "value": 0.082858583,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-4-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 8,
+      "variant": "candidate",
+      "value": 0.082194625,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-4-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 9,
+      "variant": "baseline",
+      "value": 0.090717333,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-5-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 10,
+      "variant": "candidate",
+      "value": 0.085132167,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-5-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 11,
+      "variant": "baseline",
+      "value": 0.085101584,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-6-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 12,
+      "variant": "candidate",
+      "value": 0.086540125,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-6-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 13,
+      "variant": "baseline",
+      "value": 0.08265075,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-7-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    },
+    {
+      "sequence": 14,
+      "variant": "candidate",
+      "value": 0.081669459,
+      "output_hash": "61ef609609daaff93d6c28c25e2d505a24ff4fa2ea4b21f7ae7d820672030773",
+      "attempt_id": "mcp_external_plugin-7-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-persistent-mcp-loopback"
+    }
+  ]
+}

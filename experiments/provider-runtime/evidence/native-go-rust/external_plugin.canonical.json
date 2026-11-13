@@ -1,0 +1,45 @@
+{
+  "answers": {
+    "blocking": {
+      "confidence": 1,
+      "legend": {
+        "0": "Low",
+        "1": "High"
+      },
+      "probabilities": {
+        "0": 1,
+        "1": 0
+      },
+      "score": 0,
+      "type": "score"
+    },
+    "location": {
+      "box": {
+        "bottom": 0.9,
+        "left": 0.1,
+        "right": 0.8,
+        "top": 0.2
+      },
+      "confidence": 0.8,
+      "type": "box"
+    },
+    "red": {
+      "noul": 0.9,
+      "type": "noul"
+    },
+    "team": {
+      "choice": "billing",
+      "confidence": 1,
+      "probabilities": {
+        "billing": 1,
+        "technical": 0
+      },
+      "type": "choice"
+    }
+  },
+  "model": "fixture-1",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": null
+  }
+}

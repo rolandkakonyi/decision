@@ -1,0 +1,33 @@
+{
+  "model": "fixture-1",
+  "questions": {
+    "blocking": {
+      "criteria": [
+        "Low",
+        "High"
+      ],
+      "instructions": "Assess severity",
+      "type": "score"
+    },
+    "location": {
+      "instructions": "Locate <photo>",
+      "type": "box"
+    },
+    "red": {
+      "instructions": "Is <photo> red?",
+      "type": "noul"
+    },
+    "team": {
+      "criteria": {
+        "billing": "Payments",
+        "technical": "Bugs"
+      },
+      "instructions": "Choose a team",
+      "type": "choice"
+    }
+  },
+  "state": {
+    "large": 9007199254740993,
+    "message": "red square"
+  }
+}

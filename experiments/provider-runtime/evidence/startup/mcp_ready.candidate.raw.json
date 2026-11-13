@@ -1,0 +1,957 @@
+{
+  "canonical": {
+    "protocolVersion": "2025-11-25",
+    "tools": [
+      {
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "assets": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "data_base64": {
+                    "description": "Standard base64-encoded PNG/JPEG; no data: prefix.",
+                    "maxLength": 22369624,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "png",
+                      "jpg",
+                      "jpeg"
+                    ]
+                  },
+                  "type": {
+                    "const": "image"
+                  }
+                },
+                "required": [
+                  "data_base64"
+                ],
+                "type": "object"
+              },
+              "description": "Images keyed by unique references used in state, instructions, or criteria. MCP accepts base64 image bytes, never local paths.",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            "model": {
+              "description": "Optional model override; defaults to server configuration.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "questions": {
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "false": {},
+                          "true": {}
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "noul"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "minProperties": 1,
+                        "propertyNames": {
+                          "minLength": 1
+                        },
+                        "type": "object"
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "choice"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions",
+                      "criteria"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "score"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions",
+                      "criteria"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {},
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "box"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "description": "Named questions evaluated together in ONE provider request.",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            "state": {
+              "description": "Shared context for every independent question. JSON value, excluding null.",
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "questions"
+          ],
+          "type": "object"
+        },
+        "name": "evaluate",
+        "outputSchema": {
+          "$defs": {
+            "BoxAnswer": {
+              "description": "A located box with its confidence.",
+              "properties": {
+                "box": {
+                  "$ref": "#/$defs/BoxCoordinates"
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Confidence"
+                },
+                "type": {
+                  "const": "box",
+                  "default": "box",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "box",
+                "confidence"
+              ],
+              "title": "BoxAnswer",
+              "type": "object"
+            },
+            "BoxCoordinates": {
+              "description": "A box's edges as fractions of the image's height (`top`, `bottom`) and width (`left`, `right`).",
+              "properties": {
+                "bottom": {
+                  "description": "Bottom edge of the box, as a fraction of image height from the top (0-1).",
+                  "examples": [
+                    0.66
+                  ],
+                  "title": "Bottom",
+                  "type": "number"
+                },
+                "left": {
+                  "description": "Left edge of the box, as a fraction of image width from the left (0-1).",
+                  "examples": [
+                    0.19
+                  ],
+                  "title": "Left",
+                  "type": "number"
+                },
+                "right": {
+                  "description": "Right edge of the box, as a fraction of image width from the left (0-1).",
+                  "examples": [
+                    0.68
+                  ],
+                  "title": "Right",
+                  "type": "number"
+                },
+                "top": {
+                  "description": "Top edge of the box, as a fraction of image height from the top (0-1).",
+                  "examples": [
+                    0.2
+                  ],
+                  "title": "Top",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "top",
+                "bottom",
+                "left",
+                "right"
+              ],
+              "title": "BoxCoordinates",
+              "type": "object"
+            },
+            "ChoiceAnswer": {
+              "description": "A selected label and its probabilities.\n\nSee the [choice primitive](https://docs.typesafe.ai/go/choice) for details.",
+              "properties": {
+                "choice": {
+                  "description": "The name of the choice with the highest probability among the question's criteria.",
+                  "examples": [
+                    "angry"
+                  ],
+                  "title": "Choice",
+                  "type": "string"
+                },
+                "confidence": {
+                  "description": "Confidence in the selected choice, from 0 to 1. Higher values indicate greater certainty; use lower values to flag uncertain selections for review.",
+                  "examples": [
+                    0.9
+                  ],
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "probabilities": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "Probability of each choice in criteria, keyed by choice name, from 0 to 1. Shows how likely the alternatives are; values sum to approximately 1.",
+                  "examples": [
+                    {
+                      "angry": 0.8,
+                      "calm": 0.1,
+                      "excited": 0.1
+                    }
+                  ],
+                  "title": "Probabilities",
+                  "type": "object"
+                },
+                "type": {
+                  "const": "choice",
+                  "default": "choice",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "choice",
+                "confidence",
+                "probabilities"
+              ],
+              "title": "ChoiceAnswer",
+              "type": "object"
+            },
+            "NoulAnswer": {
+              "description": "A yes/no answer.\n\nSee the [noul primitive](https://docs.typesafe.ai/go/noul) for details.",
+              "properties": {
+                "noul": {
+                  "description": "Probability of a yes answer or a true statement, from 0 to 1. Values near 1 favor yes or true, values near 0 favor no or false, and values near 0.5 indicate uncertainty.",
+                  "examples": [
+                    0.98
+                  ],
+                  "title": "Noul",
+                  "type": "number"
+                },
+                "type": {
+                  "const": "noul",
+                  "default": "noul",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "noul"
+              ],
+              "title": "NoulAnswer",
+              "type": "object"
+            },
+            "ScoreAnswer": {
+              "description": "An expected score with its rubric and probabilities.\n\nSee the [score primitive](https://docs.typesafe.ai/go/score) for details.",
+              "properties": {
+                "confidence": {
+                  "description": "Confidence in the score, from 0 to 1. Higher values indicate greater certainty; use lower values to flag uncertain ratings for review.",
+                  "examples": [
+                    0.9
+                  ],
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "legend": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      {
+                        "items": {},
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "title": "Legend",
+                  "type": "object"
+                },
+                "probabilities": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "title": "Probabilities",
+                  "type": "object"
+                },
+                "score": {
+                  "description": "Expected score: the probability-weighted average of the rubric levels. May fall between integer levels.",
+                  "examples": [
+                    1.7
+                  ],
+                  "title": "Score",
+                  "type": "number"
+                },
+                "type": {
+                  "const": "score",
+                  "default": "score",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "score",
+                "confidence",
+                "legend",
+                "probabilities"
+              ],
+              "title": "ScoreAnswer",
+              "type": "object"
+            },
+            "Usage": {
+              "description": "Token counts for a request, when reported by the API.",
+              "properties": {
+                "input_tokens": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Input Tokens"
+                },
+                "output_tokens": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Output Tokens"
+                }
+              },
+              "title": "Usage",
+              "type": "object"
+            }
+          },
+          "description": "Answers grouped by question type with model and usage metadata.\n\nSee [System One](https://docs.typesafe.ai/go/system-one) for details.",
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "discriminator": {
+                  "mapping": {
+                    "box": "#/$defs/BoxAnswer",
+                    "choice": "#/$defs/ChoiceAnswer",
+                    "noul": "#/$defs/NoulAnswer",
+                    "score": "#/$defs/ScoreAnswer"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/NoulAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/ChoiceAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/ScoreAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/BoxAnswer"
+                  }
+                ]
+              },
+              "title": "Answers",
+              "type": "object"
+            },
+            "duration_ms": {
+              "description": "Client-measured elapsed milliseconds for SDK setup, image upload, and provider response handling for the entire batch.",
+              "minimum": 0,
+              "type": "number"
+            },
+            "model": {
+              "title": "Model",
+              "type": "string"
+            },
+            "usage": {
+              "$ref": "#/$defs/Usage"
+            }
+          },
+          "required": [
+            "model",
+            "usage",
+            "duration_ms"
+          ],
+          "title": "DecisionResponse",
+          "type": "object"
+        }
+      }
+    ]
+  },
+  "raw_initialize": {
+    "capabilities": {
+      "logging": {},
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "protocolVersion": "2025-11-25",
+    "serverInfo": {
+      "name": "decision-prototype-go",
+      "version": "1"
+    }
+  },
+  "raw_tools": {
+    "cacheScope": "public",
+    "tools": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": true
+        },
+        "description": "Ask typed questions about shared context in one provider request.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "assets": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "data_base64": {
+                    "description": "Standard base64-encoded PNG/JPEG; no data: prefix.",
+                    "maxLength": 22369624,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "png",
+                      "jpg",
+                      "jpeg"
+                    ]
+                  },
+                  "type": {
+                    "const": "image"
+                  }
+                },
+                "required": [
+                  "data_base64"
+                ],
+                "type": "object"
+              },
+              "description": "Images keyed by unique references used in state, instructions, or criteria. MCP accepts base64 image bytes, never local paths.",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            "model": {
+              "description": "Optional model override; defaults to server configuration.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "questions": {
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "false": {},
+                          "true": {}
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "noul"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "minProperties": 1,
+                        "propertyNames": {
+                          "minLength": 1
+                        },
+                        "type": "object"
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "choice"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions",
+                      "criteria"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "score"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions",
+                      "criteria"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "criteria": {},
+                      "instructions": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "box"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "instructions"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "description": "Named questions evaluated together in ONE provider request.",
+              "minProperties": 1,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            "state": {
+              "description": "Shared context for every independent question. JSON value, excluding null.",
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "questions"
+          ],
+          "type": "object"
+        },
+        "name": "evaluate",
+        "outputSchema": {
+          "$defs": {
+            "BoxAnswer": {
+              "description": "A located box with its confidence.",
+              "properties": {
+                "box": {
+                  "$ref": "#/$defs/BoxCoordinates"
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Confidence"
+                },
+                "type": {
+                  "const": "box",
+                  "default": "box",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "box",
+                "confidence"
+              ],
+              "title": "BoxAnswer",
+              "type": "object"
+            },
+            "BoxCoordinates": {
+              "description": "A box's edges as fractions of the image's height (`top`, `bottom`) and width (`left`, `right`).",
+              "properties": {
+                "bottom": {
+                  "description": "Bottom edge of the box, as a fraction of image height from the top (0-1).",
+                  "examples": [
+                    0.66
+                  ],
+                  "title": "Bottom",
+                  "type": "number"
+                },
+                "left": {
+                  "description": "Left edge of the box, as a fraction of image width from the left (0-1).",
+                  "examples": [
+                    0.19
+                  ],
+                  "title": "Left",
+                  "type": "number"
+                },
+                "right": {
+                  "description": "Right edge of the box, as a fraction of image width from the left (0-1).",
+                  "examples": [
+                    0.68
+                  ],
+                  "title": "Right",
+                  "type": "number"
+                },
+                "top": {
+                  "description": "Top edge of the box, as a fraction of image height from the top (0-1).",
+                  "examples": [
+                    0.2
+                  ],
+                  "title": "Top",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "top",
+                "bottom",
+                "left",
+                "right"
+              ],
+              "title": "BoxCoordinates",
+              "type": "object"
+            },
+            "ChoiceAnswer": {
+              "description": "A selected label and its probabilities.\n\nSee the [choice primitive](https://docs.typesafe.ai/go/choice) for details.",
+              "properties": {
+                "choice": {
+                  "description": "The name of the choice with the highest probability among the question's criteria.",
+                  "examples": [
+                    "angry"
+                  ],
+                  "title": "Choice",
+                  "type": "string"
+                },
+                "confidence": {
+                  "description": "Confidence in the selected choice, from 0 to 1. Higher values indicate greater certainty; use lower values to flag uncertain selections for review.",
+                  "examples": [
+                    0.9
+                  ],
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "probabilities": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "Probability of each choice in criteria, keyed by choice name, from 0 to 1. Shows how likely the alternatives are; values sum to approximately 1.",
+                  "examples": [
+                    {
+                      "angry": 0.8,
+                      "calm": 0.1,
+                      "excited": 0.1
+                    }
+                  ],
+                  "title": "Probabilities",
+                  "type": "object"
+                },
+                "type": {
+                  "const": "choice",
+                  "default": "choice",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "choice",
+                "confidence",
+                "probabilities"
+              ],
+              "title": "ChoiceAnswer",
+              "type": "object"
+            },
+            "NoulAnswer": {
+              "description": "A yes/no answer.\n\nSee the [noul primitive](https://docs.typesafe.ai/go/noul) for details.",
+              "properties": {
+                "noul": {
+                  "description": "Probability of a yes answer or a true statement, from 0 to 1. Values near 1 favor yes or true, values near 0 favor no or false, and values near 0.5 indicate uncertainty.",
+                  "examples": [
+                    0.98
+                  ],
+                  "title": "Noul",
+                  "type": "number"
+                },
+                "type": {
+                  "const": "noul",
+                  "default": "noul",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "noul"
+              ],
+              "title": "NoulAnswer",
+              "type": "object"
+            },
+            "ScoreAnswer": {
+              "description": "An expected score with its rubric and probabilities.\n\nSee the [score primitive](https://docs.typesafe.ai/go/score) for details.",
+              "properties": {
+                "confidence": {
+                  "description": "Confidence in the score, from 0 to 1. Higher values indicate greater certainty; use lower values to flag uncertain ratings for review.",
+                  "examples": [
+                    0.9
+                  ],
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "legend": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      {
+                        "items": {},
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "title": "Legend",
+                  "type": "object"
+                },
+                "probabilities": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "title": "Probabilities",
+                  "type": "object"
+                },
+                "score": {
+                  "description": "Expected score: the probability-weighted average of the rubric levels. May fall between integer levels.",
+                  "examples": [
+                    1.7
+                  ],
+                  "title": "Score",
+                  "type": "number"
+                },
+                "type": {
+                  "const": "score",
+                  "default": "score",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "score",
+                "confidence",
+                "legend",
+                "probabilities"
+              ],
+              "title": "ScoreAnswer",
+              "type": "object"
+            },
+            "Usage": {
+              "description": "Token counts for a request, when reported by the API.",
+              "properties": {
+                "input_tokens": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Input Tokens"
+                },
+                "output_tokens": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Output Tokens"
+                }
+              },
+              "title": "Usage",
+              "type": "object"
+            }
+          },
+          "description": "Answers grouped by question type with model and usage metadata.\n\nSee [System One](https://docs.typesafe.ai/go/system-one) for details.",
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "discriminator": {
+                  "mapping": {
+                    "box": "#/$defs/BoxAnswer",
+                    "choice": "#/$defs/ChoiceAnswer",
+                    "noul": "#/$defs/NoulAnswer",
+                    "score": "#/$defs/ScoreAnswer"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/NoulAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/ChoiceAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/ScoreAnswer"
+                  },
+                  {
+                    "$ref": "#/$defs/BoxAnswer"
+                  }
+                ]
+              },
+              "title": "Answers",
+              "type": "object"
+            },
+            "duration_ms": {
+              "description": "Client-measured elapsed milliseconds for SDK setup, image upload, and provider response handling for the entire batch.",
+              "minimum": 0,
+              "type": "number"
+            },
+            "model": {
+              "title": "Model",
+              "type": "string"
+            },
+            "usage": {
+              "$ref": "#/$defs/Usage"
+            }
+          },
+          "required": [
+            "model",
+            "usage",
+            "duration_ms"
+          ],
+          "title": "DecisionResponse",
+          "type": "object"
+        }
+      }
+    ],
+    "ttlMs": 0
+  }
+}
