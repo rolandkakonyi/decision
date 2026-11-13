@@ -1,4 +1,4 @@
-"""Bounded Codex app-server client for isolated plugin discovery tests."""
+"""Bounded Codex app-server client for isolated native plugin discovery tests."""
 
 import json
 import os
@@ -6,16 +6,18 @@ import queue
 import signal
 import subprocess
 import threading
+import time
 
 
 class CodexClient:
     def __init__(self, executable, cwd, environment):
-        self.executable, self.cwd, self.environment = executable, cwd, environment
+        self.command = [executable] if isinstance(executable, str) else list(executable)
+        self.cwd, self.environment = cwd, environment
 
     def __enter__(self):
-        self.process = subprocess.Popen([self.executable, "app-server"], cwd=self.cwd, env=self.environment,
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                                        start_new_session=os.name == "posix")
+        self.process = subprocess.Popen([*self.command, "app-server"], cwd=self.cwd, env=self.environment,
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                        text=True, encoding="utf-8", start_new_session=os.name == "posix")
         self.messages = queue.Queue()
         self.sequence = 0
         self.reader = threading.Thread(target=self.read, daemon=True)
@@ -45,8 +47,9 @@ class CodexClient:
     def call(self, method, params):
         self.sequence += 1
         self.send({"id": self.sequence, "method": method, "params": params})
+        deadline = time.monotonic() + 30
         while True:
-            message = self.messages.get(timeout=30)
+            message = self.messages.get(timeout=max(0, deadline - time.monotonic()))
             if isinstance(message, Exception):
                 raise message
             if message is None:
@@ -60,7 +63,10 @@ class CodexClient:
         if os.name == "posix":
             self.signal_group(signal.SIGTERM)
         else:
-            self.process.terminate()
+            # Kill the tree before its launcher exits and loses child ancestry.
+            subprocess.run(["taskkill", "/PID", str(self.process.pid), "/T", "/F"],
+                           env=self.environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False, timeout=15)
         try:
             self.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
