@@ -21,7 +21,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/install
 Install on PATH from a [release tag](https://github.com/rolandkakonyi/decision/releases):
 
 ```bash
-uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.8.2'
+uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.9.0'
 ```
 
 Release assets also include an installable wheel and source distribution.
@@ -413,6 +413,34 @@ HTTPS host. Other hosts require an explicit key selector or `DECISION_API_KEY`.
 For `typesafe`, the base URL also honors `TYPESAFE_BASE_URL` and the SDK uses its
 usual default model. Compatible hosts must implement the selected Decisions
 or System One API; a chat-completions endpoint alone does not suffice.
+
+### Provider extensions
+
+Python installations can load independently packaged providers through the
+`decision.providers.v1` entry-point group. Install the extension into the same
+environment as `decision`, then select its registered name:
+
+```bash
+uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.9.0' --with /path/to/provider-package
+decision noul 'Is this a greeting?' --state 'Hello' --provider acme
+# DECISION_PROVIDER=acme selects it by default for CLI and MCP.
+```
+
+Only the selected provider is imported. Built-in names are reserved; duplicate
+external registrations fail instead of silently selecting one. Extensions are
+trusted Python code with access to the process environment. Install packages
+you trust. Standalone executables support the four built-ins; extensions require
+a Python installation.
+
+The same model/base-URL/key-selector overrides and common validation apply to
+extensions. Provider routing and credential selection remain fixed MCP server
+settings. Skill and Codex plugin exports remain deterministic and do not load
+external providers; forward extension-specific variable names with
+`decision plugin --env-var NAME` when using MCP integration.
+
+See [the provider API](docs/provider-plugins.md) for registration, interface,
+validation, and transport requirements. This extension mechanism is separate
+from the generated Codex plugin below.
 
 ## MCP in the same command
 

@@ -48,6 +48,10 @@ def main():
         executable = bin_dir / ("decision.exe" if os.name == "nt" else "decision")
         run("uv", "pip", "install", "--python", str(python), "--require-hashes", "-r", str(requirements))
         run("uv", "pip", "install", "--python", str(python), "--no-deps", str(wheels[0]))
+        fixture_dir = temp / "fixture-wheels"
+        run("uv", "build", "--wheel", "--out-dir", str(fixture_dir), cwd=ROOT / "tests/fixtures/provider")
+        fixture_wheel, = fixture_dir.glob("*.whl")
+        run("uv", "pip", "install", "--python", str(python), "--no-deps", str(fixture_wheel))
         clean = dict(os.environ)
         clean.pop("PYTHONPATH", None)
         clean.pop("PYTHONHOME", None)

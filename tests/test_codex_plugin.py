@@ -59,8 +59,9 @@ class NativeCodexPluginTests(unittest.TestCase):
                         if servers:
                             tool = servers[0]["tools"]["evaluate"]
                             schema = tool["inputSchema"]
-                            self.assertEqual(schema["properties"]["questions"]["maxProperties"], 64)
-                            self.assertEqual(schema["properties"]["model"]["enum"],
+                            constraints = schema["allOf"][0]["properties"]
+                            self.assertEqual(constraints["questions"]["maxProperties"], 64)
+                            self.assertEqual(constraints["model"]["enum"],
                                              ["clef", "clef-flash", "@cf/cloudflare/clef", "@cf/cloudflare/clef-flash"])
 
 

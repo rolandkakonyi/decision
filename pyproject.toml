@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "decision-harness"
-version = "0.8.2"
+version = "0.9.0"
 description = "Typed judgments through TypeSafe, OpenAI/Gemini Decisions, and Cloudflare Clef, with CLI and MCP"
 readme = "README.md"
 license = "MIT"
