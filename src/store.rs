@@ -135,13 +135,18 @@ fn update_registry(path: &Path, update: impl FnOnce(&mut Registry) -> Result<()>
     update(&mut registry)?;
     write_registry(path, &registry)
 }
-fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
+fn copy_tree(src: &Path, dst: &Path, artifacts: &Path) -> Result<()> {
+    // Local packages can contain their configured plugin home. Its artifacts
+    // include this copy's destination and must never become package input.
+    if src == artifacts {
+        return Ok(());
+    }
     let meta = fs::symlink_metadata(src).map_err(|_| Error::Input)?;
     if meta.is_dir() {
         fs::create_dir_all(dst).map_err(|_| Error::Input)?;
         for e in fs::read_dir(src).map_err(|_| Error::Input)? {
             let e = e.map_err(|_| Error::Input)?;
-            copy_tree(&e.path(), &dst.join(e.file_name()))?;
+            copy_tree(&e.path(), &dst.join(e.file_name()), artifacts)?;
         }
     } else if meta.is_file() {
         let b = read_bounded(fs::File::open(src).map_err(|_| Error::Input)?, 128 << 20)?;
@@ -303,7 +308,9 @@ pub async fn install(o: &Options, source: &str, checksum: &str) -> Result<Value>
         } else {
             return Err(Error::Input);
         };
-        copy_tree(&source, stage.path())?;
+        let source = fs::canonicalize(source).map_err(|_| Error::Input)?;
+        let excluded = fs::canonicalize(&artifacts).map_err(|_| Error::Input)?;
+        copy_tree(&source, stage.path(), &excluded)?;
     }
     verify_tree(stage.path())?;
     let root = find_package(stage.path())?;

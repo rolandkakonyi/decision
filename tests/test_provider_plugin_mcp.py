@@ -384,3 +384,12 @@ class Acceptance(unittest.TestCase):
             if process.poll() is None:
                 process.kill()
                 process.communicate(timeout=5)
+
+    def test_local_package_can_contain_its_plugin_home(self):
+        self.home = self.source / ".providers"
+        self.install()
+        self.assert_result(json.loads(self.run_payload(REQUEST, "fixture").stdout))
+        artifacts = list((self.home / "artifacts").iterdir())
+        self.assertEqual(len(artifacts), 1)
+        self.assertFalse(any(path.name == "artifacts" for path in artifacts[0].rglob("*")))
+
