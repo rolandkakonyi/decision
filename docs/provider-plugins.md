@@ -1,5 +1,10 @@
 # Provider API
 
+A provider extension adds an inference backend to a Python installation of
+Decision. It is separate from the [Codex plugin export](../README.md#generate-a-codex-plugin),
+which packages an Agent Skill and optional MCP configuration for an already
+installed executable.
+
 Python packages register provider objects in the `decision.providers.v1`
 entry-point group. The supported import surface is `decision_cli.providers`;
 other modules are implementation details. The API version is independent of

@@ -32,7 +32,7 @@ dependencies = [
 Homepage = "https://github.com/rolandkakonyi/decision"
 Repository = "https://github.com/rolandkakonyi/decision"
 Issues = "https://github.com/rolandkakonyi/decision/issues"
-Documentation = "https://github.com/rolandkakonyi/decision#readme"
+Documentation = "https://rolandkakonyi.github.io/decision/"
 Releases = "https://github.com/rolandkakonyi/decision/releases"
 
 [project.scripts]
@@ -40,6 +40,9 @@ decision = "decision_cli.cli:main"
 
 [dependency-groups]
 build = ["pyinstaller==6.22.3"]
+docs = [
+    "zensical==0.1.1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/decision_cli"]

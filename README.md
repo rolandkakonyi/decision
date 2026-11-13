@@ -5,6 +5,10 @@
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/rolandkakonyi/decision)](https://github.com/rolandkakonyi/decision/releases/latest)
 
+[Documentation](https://rolandkakonyi.github.io/decision/) ·
+[Quickstart](https://rolandkakonyi.github.io/decision/quickstart/) ·
+[Provider extension API](https://rolandkakonyi.github.io/decision/provider-plugins/)
+
 One command for typed judgments from Jev, OpenAI/Gemini Decisions, Cloudflare Clef, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
