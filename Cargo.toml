@@ -2,7 +2,7 @@
 name = "decision"
 version = "0.10.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.94"
 license = "MIT"
 publish = false
 description = "Typed judgments over text and images through CLI and MCP"
