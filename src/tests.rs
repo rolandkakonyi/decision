@@ -35,6 +35,26 @@ fn validates_raw_answers_before_normalization() {
     assert!(validation::result(&r, &q).is_err());
 }
 #[test]
+fn omitted_usage_is_unknown_but_malformed_usage_is_invalid() {
+    let q = request()["questions"].clone();
+    let mut r = result();
+    r.as_object_mut().unwrap().remove("usage");
+    assert_eq!(
+        validation::result(&r, &q).unwrap()["usage"],
+        json!({"input_tokens":null,"output_tokens":null})
+    );
+    for malformed in [
+        Value::Null,
+        json!([]),
+        json!("unknown"),
+        json!(false),
+        json!(0),
+    ] {
+        r["usage"] = malformed;
+        assert_eq!(validation::result(&r, &q), Err(Error::Data));
+    }
+}
+#[test]
 fn probability_keys_and_rounding() {
     let q = json!({"q":{"type":"choice","criteria":{"z":"Z","a":"A"}}});
     let mut r = json!({"model":"fixture","answers":{"q":{"type":"choice","choice":"z","confidence":0.9,"probabilities":{"z":0.8,"a":0.19}}},"usage":{}});
