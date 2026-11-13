@@ -1,19 +1,25 @@
 """Collect matched, alternating measurements of the built prototype artifacts."""
 
 import argparse
+from contextlib import ExitStack
 import gzip
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import platform
 import statistics
 import subprocess
+import tarfile
 import tempfile
 import time
 
-from fixtures import MCP, REQUEST, canonical_result, environment, image_request, package, provider_server
+from fixtures import MCP, REQUEST, canonical_result, environment, image_request, package, provider_server, structured
+
+SCENARIOS = ("version", "dry_run", "mcp_ready", "typesafe_text", "typesafe_images", "external_plugin",
+             "mcp_typesafe_text", "mcp_typesafe_images", "mcp_external_plugin")
 
 
 def digest(data):
@@ -39,10 +45,27 @@ def tree_rss(pid):
     return {"rss_sum_bytes": sum(rss for _, rss in selected) * 1024, "process_count": len(selected)}
 
 
-def artifact(binary):
+def artifact(binary, distribution):
     data = binary.read_bytes()
+    files = {"decision": data, "LICENSE": (binary.parents[2] / "LICENSE").read_bytes()}
+    if (binary.parent / "THIRD_PARTY_NOTICES.txt").is_file():
+        files["THIRD_PARTY_NOTICES.txt"] = (binary.parent / "THIRD_PARTY_NOTICES.txt").read_bytes()
+    else:
+        for path in sorted((binary.parent / "licenses").rglob("*")):
+            if path.is_file():
+                files["licenses/" + str(path.relative_to(binary.parent / "licenses"))] = path.read_bytes()
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as output:
+        for name, content in sorted(files.items()):
+            info = tarfile.TarInfo(name)
+            info.size, info.mode, info.mtime = len(content), 0o755 if name == "decision" else 0o644, 0
+            output.addfile(info, io.BytesIO(content))
+    packed = gzip.compress(archive.getvalue(), mtime=0)
+    distribution.parent.mkdir(parents=True, exist_ok=True)
+    distribution.write_bytes(packed)
     return {"sha256": digest(data), "executable_bytes": len(data),
-            "gzip_executable_bytes": len(gzip.compress(data, mtime=0))}
+            "gzip_executable_bytes": len(gzip.compress(data, mtime=0)),
+            "distribution_bytes": len(packed), "distribution_sha256": digest(packed)}
 
 
 def run_cli(binary, arguments, payload=None, env=None):
@@ -93,6 +116,57 @@ def canonical(name, result):
     return canonical_result(result) if isinstance(result, dict) else result
 
 
+def descriptive_evaluation(manifest, minimum_runs=5):
+    """Portable collector mode reports observations without a performance gate."""
+    samples = {variant: [row["value"] for row in manifest["runs"] if row["variant"] == variant]
+               for variant in ("baseline", "candidate")}
+    stats = {variant: {"count": len(values), "median": statistics.median(values),
+                       "min": min(values), "max": max(values)} for variant, values in samples.items()}
+    baseline = stats["baseline"]["median"]
+    stats["improvement_percent"] = (baseline - stats["candidate"]["median"]) / baseline * 100
+    return {"claimable": None, "metric": manifest["metric"], "direction": manifest["direction"],
+            "statistics": stats, "reasons": ["Descriptive measurements; no external evidence gate requested"]}
+
+
+def collect(name, variants, args, evaluate, invoke):
+    manifest = {"metric": "seconds", "direction": "lower",
+                "warmups": {key: args.warmups for key in variants}, "runs": []}
+    first, warmups, rss = {}, [], {key: [] for key in variants}
+    for variant in variants:
+        seconds, result, memory = invoke(variant)
+        first[variant] = {"value": seconds, "output_hash": digest(encoded(canonical(name, result)))}
+    for _ in range(args.warmups):
+        for variant in variants:
+            seconds, result, memory = invoke(variant)
+            warmups.append({"variant": variant, "value": seconds,
+                            "output_hash": digest(encoded(canonical(name, result)))})
+    for attempt in range(args.runs):
+        for variant in variants:
+            seconds, result, memory = invoke(variant)
+            sequence = len(manifest["runs"]) + 1
+            output = args.output / "outputs" / name / f"{sequence:02}-{variant}.json"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(encoded(result) + b"\n")
+            if memory:
+                rss[variant].append(memory)
+            context = "same-host-serial-persistent-mcp-loopback" if name.startswith("mcp_") and name != "mcp_ready" else "same-host-serial-built-artifacts-loopback-fixture"
+            manifest["runs"].append({"sequence": sequence, "variant": variant, "value": seconds,
+                                      "output_hash": digest(encoded(canonical(name, result))),
+                                      "attempt_id": f"{name}-{attempt + 1}-{variant}",
+                                      "host": "local-macos-arm64", "context": context,
+                                      "raw_output": str(output.relative_to(args.output))})
+    evaluation = evaluate(manifest, minimum_runs=5)
+    scenario = {"first_uncontrolled_observations": first, "warmups": warmups,
+                "manifest": manifest, "evaluation": evaluation}
+    if any(rss.values()):
+        scenario["mcp_ready_memory"] = {
+            variant: {"median_rss_sum_bytes": statistics.median(item["rss_sum_bytes"] for item in samples),
+                      "samples": samples} for variant, samples in rss.items()}
+    (args.output / f"{name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(json.dumps({"scenario": name, **evaluation}), flush=True)
+    return scenario
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python-binary", type=Path, required=True)
@@ -100,17 +174,22 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runs", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
-    parser.add_argument("--evaluator", type=Path, required=True,
-                        help="benchmark-change skill's scripts/benchmark_change.py")
+    parser.add_argument("--scenario", action="append", choices=SCENARIOS,
+                        help="Measure only the selected scenarios; repeatable")
+    parser.add_argument("--evaluator", type=Path,
+                        help="Optional module exporting evaluate(manifest, minimum_runs) for evidence gating")
     args = parser.parse_args()
     if args.runs < 5 or args.warmups < 1:
         parser.error("require at least five measured runs and one warmup per variant")
-    args.output.mkdir(parents=True, exist_ok=True)
+    args.output.mkdir(parents=True, exist_ok=False)
     variants = {"baseline": args.python_binary.resolve(), "candidate": args.go_binary.resolve()}
-    evaluator_spec = importlib.util.spec_from_file_location("benchmark_evaluator", args.evaluator)
-    evaluator = importlib.util.module_from_spec(evaluator_spec)
-    evaluator_spec.loader.exec_module(evaluator)
-    report = {"variants": {name: artifact(binary) for name, binary in variants.items()},
+    evaluate = descriptive_evaluation
+    if args.evaluator:
+        evaluator_spec = importlib.util.spec_from_file_location("benchmark_evaluator", args.evaluator)
+        evaluator = importlib.util.module_from_spec(evaluator_spec)
+        evaluator_spec.loader.exec_module(evaluator)
+        evaluate = evaluator.evaluate
+    report = {"variants": {name: artifact(binary, args.output / "distributions" / f"{name}.tar.gz") for name, binary in variants.items()},
               "environment": {"os": platform.platform(), "architecture": platform.machine(),
                               "cpu_count": os.cpu_count(), "python": platform.python_version(),
                               "load_average_start": os.getloadavg(),
@@ -122,7 +201,7 @@ def main():
                          "canonicalization": "Remove duration_ms; normalize integral numeric answer formatting; usage unchanged. MCP projection includes negotiated version and full tool names/input/output schemas; raw metadata retained.",
                          "cold_cache": "Not controlled; first observations are already acceptance-exercised artifacts and are not cold-cache claims"},
               "scenarios": {}}
-    names = ("version", "dry_run", "mcp_ready", "typesafe_text", "typesafe_images", "external_plugin")
+    names = args.scenario or SCENARIOS
     with tempfile.TemporaryDirectory(prefix="decision-comparison-") as folder, provider_server() as (url, requests):
         root = Path(folder)
         for variant, binary in variants.items():
@@ -131,45 +210,31 @@ def main():
             home = directory / binary.parent.name / "plugins"
             run_cli(binary, ["providers", "install", str(source), "--plugin-home", str(home)])
         for name in names:
-            manifest = {"metric": "seconds", "direction": "lower",
-                        "warmups": {key: args.warmups for key in variants}, "runs": []}
-            first = {}
-            warmups = []
-            rss = {key: [] for key in variants}
-            for variant, binary in variants.items():
-                seconds, result, memory = measure(binary, name, root / variant, url)
-                first[variant] = {"value": seconds, "output_hash": digest(encoded(canonical(name, result)))}
-            for _ in range(args.warmups):
-                for variant, binary in variants.items():
-                    seconds, result, memory = measure(binary, name, root / variant, url)
-                    warmups.append({"variant": variant, "value": seconds,
-                                    "output_hash": digest(encoded(canonical(name, result)))})
-            for attempt in range(args.runs):
-                for variant, binary in variants.items():
-                    seconds, result, memory = measure(binary, name, root / variant, url)
-                    sequence = len(manifest["runs"]) + 1
-                    output = args.output / "outputs" / name / f"{sequence:02}-{variant}.json"
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    output.write_bytes(encoded(result) + b"\n")
-                    if memory:
-                        rss[variant].append(memory)
-                    manifest["runs"].append({"sequence": sequence, "variant": variant, "value": seconds,
-                                              "output_hash": digest(encoded(canonical(name, result))),
-                                              "attempt_id": f"{name}-{attempt + 1}-{variant}",
-                                              "host": "local-macos-arm64", "context": "same-host-serial-built-artifacts-loopback-fixture",
-                                              "raw_output": str(output.relative_to(args.output))})
-            evaluation = evaluator.evaluate(manifest, minimum_runs=5)
-            scenario = {"first_uncontrolled_observations": first, "warmups": warmups,
-                        "manifest": manifest, "evaluation": evaluation}
-            if any(rss.values()):
-                scenario["mcp_ready_memory"] = {
-                    variant: {"median_rss_sum_bytes": statistics.median(item["rss_sum_bytes"] for item in samples),
-                              "samples": samples} for variant, samples in rss.items()}
-            report["scenarios"][name] = scenario
-            (args.output / f"{name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-            print(json.dumps({"scenario": name, **evaluation}), flush=True)
+            with ExitStack() as sessions:
+                if name.startswith("mcp_") and name != "mcp_ready":
+                    clients = {}
+                    provider = "fixture" if name == "mcp_external_plugin" else "typesafe"
+                    payload = image_request() if name == "mcp_typesafe_images" else REQUEST
+                    for variant, binary in variants.items():
+                        home = root / variant / binary.parent.name / "plugins"
+                        clients[variant] = sessions.enter_context(MCP([str(binary), "mcp", "--provider", provider,
+                                                                       "--base-url", url, "--plugin-home", str(home)]))
+                    def invoke(variant):
+                        started = time.perf_counter_ns()
+                        response = clients[variant].call("evaluate", payload)
+                        seconds = (time.perf_counter_ns() - started) / 1e9
+                        if response.get("isError"):
+                            raise RuntimeError("persistent MCP evaluation failed")
+                        return seconds, structured(response), None
+                else:
+                    def invoke(variant):
+                        return measure(variants[variant], name, root / variant, url)
+                report["scenarios"][name] = collect(name, variants, args, evaluate, invoke)
         report["fixture_request_count"] = len(requests)
     report["environment"]["load_average_end"] = os.getloadavg()
+    for variant, binary in variants.items():
+        if digest(binary.read_bytes()) != report["variants"][variant]["sha256"]:
+            raise RuntimeError("an artifact changed during measurement; discard this batch")
     (args.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     return 0
 

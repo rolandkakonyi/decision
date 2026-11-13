@@ -1,0 +1,136 @@
+{
+  "metric": "seconds",
+  "direction": "lower",
+  "warmups": {
+    "baseline": 2,
+    "candidate": 2
+  },
+  "runs": [
+    {
+      "sequence": 1,
+      "variant": "baseline",
+      "value": 0.52215975,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-1-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 2,
+      "variant": "candidate",
+      "value": 0.0234585,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-1-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 3,
+      "variant": "baseline",
+      "value": 0.592062125,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-2-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 4,
+      "variant": "candidate",
+      "value": 0.024720625,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-2-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 5,
+      "variant": "baseline",
+      "value": 0.536010375,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-3-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 6,
+      "variant": "candidate",
+      "value": 0.01774025,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-3-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 7,
+      "variant": "baseline",
+      "value": 0.548286792,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-4-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 8,
+      "variant": "candidate",
+      "value": 0.017687583,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-4-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 9,
+      "variant": "baseline",
+      "value": 0.608146792,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-5-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 10,
+      "variant": "candidate",
+      "value": 0.019432625,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-5-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 11,
+      "variant": "baseline",
+      "value": 0.5371285,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-6-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 12,
+      "variant": "candidate",
+      "value": 0.017862542,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-6-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 13,
+      "variant": "baseline",
+      "value": 0.530263084,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-7-baseline",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    },
+    {
+      "sequence": 14,
+      "variant": "candidate",
+      "value": 0.017966,
+      "output_hash": "23f0b935138a4f01b7db1b9ce461573ec5ccff025abdf8f3e4a3bd51d2466044",
+      "attempt_id": "version-7-candidate",
+      "host": "local-macos-arm64",
+      "context": "same-host-serial-built-artifacts-loopback-fixture"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "python": {
+    "binary": "python prototype standalone",
+    "tests_run": 20,
+    "passed": true,
+    "failures": 0,
+    "errors": 0,
+    "outcomes": {
+      "test_archive_install_verifies_hash": {
+        "status": "passed"
+      },
+      "test_cli_path_image_and_credential_free_preview": {
+        "status": "passed"
+      },
+      "test_cli_timeout_reaps_plugin_process_group": {
+        "status": "passed"
+      },
+      "test_disabled_provider_never_launches": {
+        "status": "passed"
+      },
+      "test_external_dry_run_has_no_evaluation_or_setup": {
+        "status": "passed"
+      },
+      "test_external_raw_result_validation_and_safe_errors": {
+        "status": "passed"
+      },
+      "test_failed_setup_preserves_active_registration": {
+        "status": "passed"
+      },
+      "test_git_install_pinned_source": {
+        "status": "passed"
+      },
+      "test_local_install_setup_and_plugin_evaluation": {
+        "status": "passed"
+      },
+      "test_management_mcp_install_list_remove_and_new_inference": {
+        "status": "passed"
+      },
+      "test_mcp_and_plugin_accept_maximum_asset_frame": {
+        "status": "passed"
+      },
+      "test_mcp_cancellation_reaps_plugin_process_group": {
+        "status": "passed"
+      },
+      "test_official_mcp_client_accepts_management_results": {
+        "status": "passed"
+      },
+      "test_project_configuration_is_explicit": {
+        "status": "passed"
+      },
+      "test_running_mcp_keeps_pinned_artifact_after_update_and_remove": {
+        "status": "passed"
+      },
+      "test_typesafe_atomic_errors_and_no_redirect_retry": {
+        "status": "passed"
+      },
+      "test_typesafe_cli_batch_and_integer_state": {
+        "status": "passed"
+      },
+      "test_typesafe_cli_png_box_multipart": {
+        "status": "passed"
+      },
+      "test_typesafe_mcp_schema_images_and_routing_rejection": {
+        "status": "passed"
+      },
+      "test_version_without_credentials_or_runtime_path": {
+        "status": "passed"
+      }
+    },
+    "failure_details": []
+  },
+  "go": {
+    "binary": "go prototype standalone",
+    "tests_run": 20,
+    "passed": true,
+    "failures": 0,
+    "errors": 0,
+    "outcomes": {
+      "test_archive_install_verifies_hash": {
+        "status": "passed"
+      },
+      "test_cli_path_image_and_credential_free_preview": {
+        "status": "passed"
+      },
+      "test_cli_timeout_reaps_plugin_process_group": {
+        "status": "passed"
+      },
+      "test_disabled_provider_never_launches": {
+        "status": "passed"
+      },
+      "test_external_dry_run_has_no_evaluation_or_setup": {
+        "status": "passed"
+      },
+      "test_external_raw_result_validation_and_safe_errors": {
+        "status": "passed"
+      },
+      "test_failed_setup_preserves_active_registration": {
+        "status": "passed"
+      },
+      "test_git_install_pinned_source": {
+        "status": "passed"
+      },
+      "test_local_install_setup_and_plugin_evaluation": {
+        "status": "passed"
+      },
+      "test_management_mcp_install_list_remove_and_new_inference": {
+        "status": "passed"
+      },
+      "test_mcp_and_plugin_accept_maximum_asset_frame": {
+        "status": "passed"
+      },
+      "test_mcp_cancellation_reaps_plugin_process_group": {
+        "status": "passed"
+      },
+      "test_official_mcp_client_accepts_management_results": {
+        "status": "passed"
+      },
+      "test_project_configuration_is_explicit": {
+        "status": "passed"
+      },
+      "test_running_mcp_keeps_pinned_artifact_after_update_and_remove": {
+        "status": "passed"
+      },
+      "test_typesafe_atomic_errors_and_no_redirect_retry": {
+        "status": "passed"
+      },
+      "test_typesafe_cli_batch_and_integer_state": {
+        "status": "passed"
+      },
+      "test_typesafe_cli_png_box_multipart": {
+        "status": "passed"
+      },
+      "test_typesafe_mcp_schema_images_and_routing_rejection": {
+        "status": "passed"
+      },
+      "test_version_without_credentials_or_runtime_path": {
+        "status": "passed"
+      }
+    },
+    "failure_details": []
+  },
+  "production_source": {
+    "tests_run": 80,
+    "passed": 79,
+    "skipped": 1,
+    "generated_skill_check": "passed"
+  }
+}
