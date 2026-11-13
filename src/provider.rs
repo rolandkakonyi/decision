@@ -79,6 +79,8 @@ fn credential(o: &Options, p: Option<&Plugin>) -> Result<String> {
         let v = check_url(official)?;
         if u.scheme() == "https"
             && u.port_or_known_default() == Some(443)
+            && v.scheme() == "https"
+            && v.port_or_known_default() == Some(443)
             && u.host_str() == v.host_str()
         {
             match p {
@@ -218,4 +220,137 @@ async fn typesafe(o: &Options, r: &Value, key: &str) -> Result<Value> {
         return Err(Error::Provider);
     }
     decode(&response_bytes(response, FRAME_LIMIT).await?).map_err(|_| Error::Data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    #[ignore = "isolated credential environment fixture"]
+    fn credential_host_fixture() {
+        let scenario = std::env::var("DECISION_CREDENTIAL_TEST_SCENARIO").unwrap();
+        let default = if scenario == "http" || scenario == "explicit" {
+            "http://localhost"
+        } else if scenario == "official" {
+            "https://api.example.test"
+        } else {
+            "https://api.example.test:444"
+        };
+        let actual = if default.contains("localhost") {
+            "https://localhost"
+        } else {
+            "https://api.example.test"
+        };
+        let o = Options {
+            provider: "fixture".into(),
+            base: actual.into(),
+            key_env: if scenario == "explicit" {
+                "EXPLICIT_FIXTURE_KEY".into()
+            } else {
+                String::new()
+            },
+            ..Options::default()
+        };
+        let plugin = Plugin {
+            root: "unused".into(),
+            manifest: crate::store::Manifest {
+                protocol_version: 1,
+                name: "fixture".into(),
+                version: "1".into(),
+                command: vec!["unused".into()],
+                setup: None,
+                default_base_url: default.into(),
+                default_model: None,
+                credential_env_vars: vec!["PROVIDER_FIXTURE_KEY".into()],
+                schema_constraints: serde_json::Map::new(),
+            },
+        };
+        let value = credential(&o, Some(&plugin));
+        match scenario.as_str() {
+            "official" => assert_eq!(value.unwrap(), "implicit-fixture"),
+            "generic" => assert_eq!(value.unwrap(), "generic-fixture"),
+            "explicit" => assert_eq!(value.unwrap(), "explicit-fixture"),
+            _ => assert!(value.is_err()),
+        }
+    }
+    #[test]
+    fn implicit_credentials_require_both_default_and_actual_https_443() {
+        for scenario in ["port", "http", "official", "generic", "explicit"] {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            child
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "provider::tests::credential_host_fixture",
+                ])
+                .env_clear();
+            for name in crate::process::INHERITED_ENV {
+                if let Some(value) = std::env::var_os(name) {
+                    child.env(name, value);
+                }
+            }
+            child
+                .env("DECISION_CREDENTIAL_TEST_SCENARIO", scenario)
+                .env("PROVIDER_FIXTURE_KEY", "implicit-fixture");
+            if scenario == "generic" {
+                child.env("DECISION_API_KEY", "generic-fixture");
+            }
+            if scenario == "explicit" {
+                child.env("EXPLICIT_FIXTURE_KEY", "explicit-fixture");
+            }
+            let result = child.output().unwrap();
+            assert!(
+                result.status.success(),
+                "credential policy case {scenario} failed"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod http_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    #[tokio::test]
+    async fn typesafe_http_omitted_usage_normalizes_to_null_counts() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut input = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = stream.read(&mut chunk).unwrap();
+                assert!(n > 0);
+                input.extend_from_slice(&chunk[..n]);
+                if let Some(end) = input.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&input[..end]).to_ascii_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .unwrap()
+                        .trim()
+                        .parse()
+                        .unwrap();
+                    if input.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let body = r#"{"model":"fixture","answers":{"q":{"type":"noul","noul":0.9}}}"#;
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+        });
+        let o = Options {
+            base: format!("http://{address}"),
+            ..Options::default()
+        };
+        let r = json!({"state":"x","questions":{"q":{"type":"noul","instructions":"True?"}}});
+        let raw = typesafe(&o, &r, "fixture-key").await.unwrap();
+        server.join().unwrap();
+        let normalized = validation::result(&raw, &r["questions"]).unwrap();
+        assert_eq!(
+            normalized["usage"],
+            json!({"input_tokens":null,"output_tokens":null})
+        );
+    }
 }

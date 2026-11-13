@@ -233,7 +233,11 @@ pub fn result(v: &Value, qs: &Value) -> Result<Value> {
         }
         answers.insert(id.clone(), out);
     }
-    let u = v["usage"].as_object().ok_or(Error::Data)?;
+    let empty_usage = serde_json::Map::new();
+    let u = match v.get("usage") {
+        None => &empty_usage,
+        Some(v) => v.as_object().ok_or(Error::Data)?,
+    };
     let mut usage = json!({});
     for key in ["input_tokens", "output_tokens"] {
         let n = u.get(key).unwrap_or(&Value::Null);
