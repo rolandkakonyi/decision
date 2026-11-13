@@ -70,7 +70,7 @@ func evaluate(ctx context.Context, o options, p *plugin, r *request, paths bool,
 		return nil, e
 	}
 	_, hasModel := r.data["model"]
-	if o.model != "" && (paths || !hasModel) {
+	if o.model != "" && !hasModel {
 		r.data["model"] = o.model
 	} else if _, ok := r.data["model"]; !ok && p != nil && p.Model != "" {
 		r.data["model"] = p.Model
@@ -119,7 +119,11 @@ func typesafe(ctx context.Context, o options, r *request, key string) (any, erro
 	body := r.wire()
 	delete(body, "assets")
 	if _, ok := body["model"]; !ok {
-		body["model"] = "jev-latest"
+		model := strings.TrimSpace(os.Getenv("TYPESAFE_DEFAULT_MODEL"))
+		if model == "" {
+			model = "jev-latest"
+		}
+		body["model"] = model
 	}
 	contentType := "application/json"
 	payload := encoded(body)
