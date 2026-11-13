@@ -6,6 +6,10 @@ artifacts. Persistent external-plugin calls have equivalent latency in this
 experiment. The evidence supports Go as a native CLI/Homebrew host; plugin
 flexibility itself works with either language.
 
+The [native Rust/Go comparison](RUST-COMPARISON.md) evaluates the third host
+and records the corrected Go model-environment behavior. The timings below
+remain snapshots of the original Python and Go artifacts.
+
 These are TypeSafe/external-provider experiments, not complete replacement
 implementations. The production CLI, other built-in providers, generated exports,
 and release configuration retain their existing behavior.
