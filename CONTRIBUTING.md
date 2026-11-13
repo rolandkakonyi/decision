@@ -41,6 +41,32 @@ For standalone changes, use the build and compiled transport checks in
 [docs/standalone.md](docs/standalone.md). Never commit environment files,
 credentials, build outputs, or executables.
 
+## Documentation site
+
+The site uses [Zensical](https://zensical.org/) and deploys to this repository's
+[GitHub Pages site](https://rolandkakonyi.github.io/decision/). It uses free,
+open-source tooling and requires no hosted search or analytics service.
+
+```bash
+uv sync --locked --group docs
+uv run --locked --group docs python scripts/build_docs.py
+uv run --locked --group docs zensical serve
+```
+
+The build assembles README sections, the provider and standalone guides, and
+the generated skill references into `.state/docs`, then renders `.state/site`.
+It checks internal links, fragments, and assets against the `/decision/` base
+path. Edit the original Markdown or generated-reference source; the assembled
+files are disposable. Homepage, concepts, and styles live under `docs/site/`;
+navigation and theme settings live in `zensical.toml`. Rerun the build after
+editing source documents while previewing. `--prepare-only` assembles the
+Markdown without building the site.
+
+Pull requests build and check the site without deployment. A push to `main`
+publishes it through `.github/workflows/docs.yml`. The repository's Pages
+publishing source must be **GitHub Actions**. Documentation dependencies belong
+to the `docs` group and are not part of the installed CLI or standalone binary.
+
 ## Releases
 
 The version in `pyproject.toml` is the release version. Maintainers keep

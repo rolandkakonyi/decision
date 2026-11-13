@@ -1,4 +1,4 @@
-"""Execute the generated user-facing examples without provider calls."""
+"""Execute generated and site examples without provider calls."""
 
 from contextlib import chdir, redirect_stdout
 import io
@@ -16,6 +16,7 @@ from decision_cli import cli
 from test_images import png_bytes
 
 REFERENCES = Path(__file__).resolve().parents[1] / "skills/decision/references"
+SITE_DOCS = Path(__file__).resolve().parents[1] / "docs/site"
 
 
 class DocumentedExamplesTests(unittest.TestCase):
@@ -25,14 +26,19 @@ class DocumentedExamplesTests(unittest.TestCase):
         self.addCleanup(environment.stop)
 
     def test_all_documented_query_commands_validate_without_inference(self):
-        guide = (REFERENCES / "examples.md").read_text()
+        homepage = (SITE_DOCS / "index.md").read_text()
+        guide = "\n".join(((REFERENCES / "examples.md").read_text(),
+                           homepage, (SITE_DOCS / "concepts.md").read_text()))
         commands = []
         for block in re.findall(r"```bash\n(.*?)```", guide, re.S):
-            commands.extend(shlex.split(line) for line in block.replace("\\\n", "").strip().splitlines() if line.strip())
+            commands.extend(shlex.split(line) for line in block.replace("\\\n", "").strip().splitlines()
+                            if line.strip() and not line.startswith("brew "))
         self.assertTrue(commands, "No executable examples found")
         seen_commands, seen_types = set(), set()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            request = json.loads(re.search(r"```json\n(.*?)```", homepage, re.S).group(1))
+            (root / "request.json").write_text(json.dumps(request))
             for name in ("dog.jpg", "before.jpg", "after.jpg"):
                 (root / name).write_bytes(png_bytes())
             for name in ("dog-request.json", "dog-questions.json",

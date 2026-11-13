@@ -1,0 +1,89 @@
+[project]
+site_name = "decision"
+site_url = "https://rolandkakonyi.github.io/decision/"
+site_description = "Typed judgments over text and images. One CLI, a STDIO MCP server, and pluggable AI providers."
+repo_url = "https://github.com/rolandkakonyi/decision"
+repo_name = "rolandkakonyi/decision"
+docs_dir = ".state/docs"
+site_dir = ".state/site"
+extra_css = ["assets/decision.css"]
+nav = [
+  { "Overview" = "index.md" },
+  { "Get started" = [
+    { "Install and quickstart" = "quickstart.md" },
+    { "Questions and answers" = "concepts.md" },
+  ] },
+  { "Use Decision" = [
+    { "CLI and batches" = "cli.md" },
+    { "Images and bounding boxes" = "images.md" },
+    { "Provider configuration" = "providers.md" },
+    { "Worked examples" = "examples.md" },
+  ] },
+  { "Connect an agent" = [
+    { "MCP server" = "mcp.md" },
+    { "Codex plugin and Agent Skill" = "agent-integrations.md" },
+    { "Plugin export reference" = "plugin-reference.md" },
+  ] },
+  { "Extend and reference" = [
+    { "Write a provider extension" = "provider-plugins.md" },
+    { "Command reference" = "command-reference.md" },
+    { "Request schema" = "schema.md" },
+    { "Agent Skill reference" = "skill-reference.md" },
+  ] },
+  { "Project" = [
+    { "Standalone builds" = "standalone.md" },
+    { "Development" = "development.md" },
+    { "Contributing" = "contributing.md" },
+    { "Releases" = "https://github.com/rolandkakonyi/decision/releases" },
+    { "Security" = "https://github.com/rolandkakonyi/decision/security/policy" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+font = false
+logo = "assets/mark.svg"
+favicon = "assets/mark.svg"
+features = [
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.sections",
+  "navigation.footer",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+
+[project.extra]
+generator = false
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/rolandkakonyi/decision"
+name = "Decision on GitHub"
