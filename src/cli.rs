@@ -58,10 +58,22 @@ pub fn command() -> Command {
         .arg_required_else_help(true)
         .subcommand_required(true)
         .arg(flag("json", "Print evaluation or request preview as JSON").global(true));
-    for name in ["noul", "choice", "score", "box", "ask", "run", "mcp"] {
-        let mut sub = connection(Command::new(name));
+    for (name, about) in [
+        ("noul", "Ask a yes/no probability question"),
+        ("choice", "Choose among named options"),
+        ("score", "Score against ordered levels"),
+        ("box", "Locate a region in an image"),
+        ("ask", "Ask named questions from a JSON file"),
+        ("run", "Evaluate a complete JSON request"),
+        ("mcp", "Expose a configured provider through STDIO MCP"),
+    ] {
+        let mut sub = connection(Command::new(name).about(about));
         if ["noul", "choice", "score", "box"].contains(&name) {
-            sub = sub.arg(Arg::new("question").required(true));
+            sub = sub.arg(
+                Arg::new("question")
+                    .required(true)
+                    .help("Instructions for the typed question"),
+            );
         }
         if name == "run" {
             sub = sub.arg(
@@ -156,17 +168,43 @@ pub fn command() -> Command {
             .subcommand_required(true)
             .subcommand(scope(
                 Command::new("install")
-                    .arg(Arg::new("source").required(true))
+                    .about("Install or update a trusted provider package")
+                    .arg(
+                        Arg::new("source")
+                            .required(true)
+                            .help("Local package, checksum-verified archive, or pinned Git source"),
+                    )
                     .arg(value("sha256", "Required archive SHA-256")),
             ))
-            .subcommand(scope(Command::new("list")))
             .subcommand(scope(
-                Command::new("remove").arg(Arg::new("name").required(true)),
+                Command::new("list").about("List registered provider versions"),
+            ))
+            .subcommand(scope(
+                Command::new("remove")
+                    .about("Unregister a provider while retaining pinned artifacts")
+                    .arg(
+                        Arg::new("name")
+                            .required(true)
+                            .help("Registered provider name"),
+                    ),
             )),
     )
 }
 pub fn help_text() -> String {
-    command().render_long_help().to_string()
+    fn collect(command: Command, invocation: String, sections: &mut Vec<String>) {
+        let mut command = command.bin_name(invocation.clone());
+        sections.push(command.render_long_help().to_string().trim_end().to_owned());
+        for subcommand in command.get_subcommands().filter(|c| c.get_name() != "help") {
+            collect(
+                subcommand.clone(),
+                format!("{invocation} {}", subcommand.get_name()),
+                sections,
+            );
+        }
+    }
+    let mut sections = Vec::new();
+    collect(command(), "decision".into(), &mut sections);
+    sections.join("\n\n") + "\n"
 }
 pub fn parse(
     args: impl IntoIterator<Item = OsString>,
@@ -250,6 +288,22 @@ pub fn expand_home(s: &str) -> Result<PathBuf> {
     }
     Ok(PathBuf::from(s))
 }
+fn resolve_file(path: PathBuf) -> std::io::Result<PathBuf> {
+    let canonical = std::fs::canonicalize(path)?;
+    #[cfg(windows)]
+    {
+        // Match ordinary drive/UNC paths in user-facing JSON. Rust's Windows
+        // canonicalize returns the verbatim namespace prefix by default.
+        let text = canonical.to_string_lossy();
+        if let Some(tail) = text.strip_prefix(r"\\?\UNC\") {
+            return Ok(PathBuf::from(format!(r"\\{tail}")));
+        }
+        if let Some(tail) = text.strip_prefix(r"\\?\") {
+            return Ok(PathBuf::from(tail));
+        }
+    }
+    Ok(canonical)
+}
 fn read(path: &str) -> Result<Value> {
     let b = if path == "-" {
         validation::read_bounded(std::io::stdin().lock(), json::FRAME_LIMIT)?
@@ -265,8 +319,10 @@ fn read(path: &str) -> Result<Value> {
 }
 pub fn make_request(name: &str, m: &ArgMatches, o: &Options) -> Result<(Value, PathBuf)> {
     let directory = if name == "run" && get(m, "request-file") != Some("-") {
-        std::path::absolute(expand_home(get(m, "request-file").unwrap())?)
-            .map_err(|_| Error::Input)?
+        resolve_file(expand_home(get(m, "request-file").unwrap())?)
+            .map_err(|_| {
+                Error::input("Cannot read JSON file; check the selected path and permissions")
+            })?
             .parent()
             .unwrap()
             .to_path_buf()
@@ -401,7 +457,9 @@ pub fn attach_images(payload: &mut Value, images: &[String], directory: &Path) -
                 ));
             }
             named.insert(name.into(), reference.clone().into());
-            let path = std::path::absolute(expand_home(path)?).map_err(|_| Error::Input)?;
+            let path = resolve_file(expand_home(path)?).map_err(|_| {
+                Error::input("Cannot read image file; check the selected path and permissions")
+            })?;
             assets.insert(reference, json!({"path":path.to_string_lossy()}));
         }
         state.insert("images".into(), named.into());
@@ -453,18 +511,32 @@ mod tests {
         );
     }
     #[test]
-    fn choice_order_empty_descriptions_and_images() {
-        let m = parsed(&[
-            "choice",
-            "Pick",
-            "--state",
-            "literal",
-            "--option",
-            "z=",
-            "--option",
-            "a=A",
+    fn exported_help_covers_all_commands_and_flags() {
+        let reference = help_text();
+        for expected in [
+            "--questions-file",
+            "--level",
+            "--sha256",
+            "--mcp-command",
             "--image",
-            "photo=photo.png",
+            "--management",
+            "decision providers install",
+            "decision providers list",
+            "decision providers remove",
+        ] {
+            assert!(reference.contains(expected), "missing {expected}");
+        }
+        assert!(reference.lines().all(|line| line == line.trim_end()));
+    }
+    #[test]
+    fn choice_order_empty_descriptions_and_images() {
+        let directory = tempfile::tempdir().unwrap();
+        let photo = directory.path().join("photo.png");
+        std::fs::write(&photo, b"\x89PNG\r\n\x1a\n").unwrap();
+        let image = format!("photo={}", photo.to_string_lossy());
+        let m = parsed(&[
+            "choice", "Pick", "--state", "literal", "--option", "z=", "--option", "a=A", "--image",
+            &image,
         ]);
         let o = Options::default();
         let (_, sub) = m.subcommand().unwrap();
@@ -505,5 +577,33 @@ mod tests {
                 .exit_code(),
             2
         );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn request_relative_images_use_resolved_request_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let actual = directory.path().join("actual");
+        std::fs::create_dir(&actual).unwrap();
+        let request = actual.join("request.json");
+        std::fs::write(&request,br#"{"state":"<photo>","questions":{"q":{"type":"noul","instructions":"True?"}},"assets":{"<photo>":{"path":"photo.png"}}}"#).unwrap();
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(&actual, &alias).unwrap();
+        let file = alias.join("request.json");
+        let m = parsed(&["run", file.to_str().unwrap()]);
+        let (_, sub) = m.subcommand().unwrap();
+        let (r, _) = make_request("run", sub, &Options::default()).unwrap();
+        assert_eq!(
+            PathBuf::from(r["assets"]["<photo>"]["path"].as_str().unwrap()),
+            actual.canonicalize().unwrap().join("photo.png")
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    fn display_paths_use_ordinary_windows_namespace() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("file.json");
+        std::fs::write(&file, b"{}").unwrap();
+        let resolved = resolve_file(file).unwrap();
+        assert!(!resolved.to_string_lossy().starts_with(r"\\?\"));
     }
 }

@@ -227,7 +227,7 @@ pub async fn install(o: &Options, source: &str, checksum: &str) -> Result<Value>
             || !(u.scheme() == "https"
                 || u.scheme() == "file"
                     && u.host_str().is_none()
-                    && Path::new(u.path()).is_absolute())
+                    && u.to_file_path().is_ok_and(|path| path.is_absolute()))
         {
             return Err(Error::Input);
         }
