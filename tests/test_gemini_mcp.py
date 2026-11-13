@@ -146,7 +146,7 @@ class GeminiTransportTests(unittest.TestCase):
                 async with ClientSession(read, write, read_timeout_seconds=30) as session:
                     await session.initialize()
                     tool = (await session.list_tools()).tools[0]
-                    schema = tool.input_schema["properties"]["questions"]
+                    schema = tool.input_schema["allOf"][0]["properties"]["questions"]
                     variants = schema["additionalProperties"]["oneOf"]
                     self.assertEqual({v["properties"]["type"]["const"] for v in variants}, {"noul", "choice", "score"})
                     self.assertEqual(schema["maxProperties"], 1000)

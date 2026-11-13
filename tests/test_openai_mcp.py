@@ -167,9 +167,10 @@ class OpenAITransportTests(unittest.TestCase):
                 async with ClientSession(read, write, read_timeout_seconds=30) as session:
                     await session.initialize()
                     tool = (await session.list_tools()).tools[0]
-                    variants = tool.input_schema["properties"]["questions"]["additionalProperties"]["oneOf"]
+                    constraints = tool.input_schema["allOf"][0]["properties"]["questions"]
+                    variants = constraints["additionalProperties"]["oneOf"]
                     self.assertEqual({v["properties"]["type"]["const"] for v in variants}, {"noul", "choice", "score"})
-                    self.assertEqual(tool.input_schema["properties"]["questions"]["maxProperties"], 400)
+                    self.assertEqual(constraints["maxProperties"], 400)
                     payload = {"model": "call-override", "state": {"photo": "<photo>"}, "questions": QUESTIONS,
                                "assets": {"<photo>": {"data_base64": base64.b64encode(png_bytes()).decode()}}}
                     validate(payload, tool.input_schema)

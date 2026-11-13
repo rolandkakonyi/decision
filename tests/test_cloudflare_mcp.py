@@ -157,11 +157,11 @@ class CloudflareTransportTests(unittest.TestCase):
                 async with ClientSession(read, write, read_timeout_seconds=30) as session:
                     await session.initialize()
                     tool = (await session.list_tools()).tools[0]
-                    questions_schema = tool.input_schema["properties"]["questions"]
+                    questions_schema = tool.input_schema["allOf"][0]["properties"]["questions"]
                     variants = questions_schema["additionalProperties"]["oneOf"]
                     self.assertEqual({v["properties"]["type"]["const"] for v in variants}, {"noul", "choice", "score"})
                     self.assertEqual(questions_schema["maxProperties"], 64)
-                    self.assertEqual(tool.input_schema["properties"]["assets"]["maxProperties"], 4)
+                    self.assertEqual(tool.input_schema["allOf"][0]["properties"]["assets"]["maxProperties"], 4)
                     payload = {"model": "@cf/cloudflare/clef-flash", "state": {"photo": "<photo>"}, "questions": QUESTIONS,
                                "assets": {"<photo>": {"data_base64": base64.b64encode(png_bytes()).decode()}}}
                     validate(payload, tool.input_schema)

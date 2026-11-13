@@ -3,10 +3,12 @@
 import base64
 import json
 import math
+import logging
 
 from decision_cli.errors import ProviderError
 from decision_cli.images import image_format
 from decision_cli.results import validate_result
+from decision_cli.providers import PreparedRequest, ProviderInfo
 
 DEFAULT_MODEL = "gpt-6-luna"
 
@@ -137,3 +139,28 @@ def evaluate(payload, images, args, key):
         response = client.decisions.create(**request)
     # A malformed SDK object must not emit serialization warnings containing provider data.
     return normalize_response(response.model_dump(mode="json", warnings=False), payload["questions"])
+
+
+class OpenAIProvider:
+    api_version = 1
+    info = ProviderInfo("openai", "https://api.openai.com/v1", DEFAULT_MODEL,
+                        "OPENAI_BASE_URL", ("OPENAI_API_KEY",))
+
+    def prepare(self, request, images):
+        validate_request(request)
+        return PreparedRequest(request, images)
+
+    def validate_connection(self, prepared, settings):
+        pass
+
+    def evaluate(self, prepared, settings, api_key):
+        logging.getLogger("openai").setLevel(logging.CRITICAL)
+        return evaluate(prepared.request, prepared.data, settings, api_key)
+
+    def schema_constraints(self):
+        from decision_cli.schema import decision_constraints
+
+        return decision_constraints(400)
+
+
+PROVIDER = OpenAIProvider()

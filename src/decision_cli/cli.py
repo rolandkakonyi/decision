@@ -2,8 +2,8 @@
 
 import argparse
 import asyncio
+from copy import deepcopy
 import json
-import logging
 import math
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from decision_cli.errors import ProviderError
 
-VERSION = "0.8.2"
+VERSION = "0.9.0"
 
 
 def read_json(path):
@@ -52,8 +52,10 @@ def parser():
         if name == "score":
             sub.add_argument("--level", action="append", required=True, help="Ordered level; repeat")
         sub.add_argument("--model", default=os.getenv("DECISION_MODEL"))
-        sub.add_argument("--provider", choices=("typesafe", "openai", "cloudflare", "gemini"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
-                         help="Wire API provider (default: DECISION_PROVIDER or typesafe)")
+        sub.add_argument("--provider", default=os.getenv("DECISION_PROVIDER", "typesafe"), metavar="NAME",
+                         help="Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)")
+        sub.add_argument("--disable-provider", action="append", default=[], metavar="NAME",
+                         help="Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back")
         sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL"),
                          help="API base URL; defaults to the selected provider's URL or provider-specific environment setting")
         sub.add_argument("--api-key-env", default=os.getenv("DECISION_API_KEY_ENV"),
@@ -148,61 +150,42 @@ def make_request(args):
     return prepare_request(payload, args, allow_paths=True)
 
 
+def selected_provider(args):
+    if args.provider in args.disable_provider:
+        raise ValueError("Selected provider is disabled for this invocation; choose another --provider or remove its --disable-provider flag")
+    from decision_cli.registry import load_provider
+
+    provider = getattr(args, "_provider", None)
+    if provider is None or provider.info.name != args.provider:
+        provider = args._provider = load_provider(args.provider)
+    return provider
+
+
 def prepare_request(payload, args, *, allow_paths=False):
     payload = dict(validate_request(payload, allow_paths=allow_paths))
     if args.model and "model" not in payload:
         payload["model"] = args.model
-    if args.provider == "openai":
-        from decision_cli.openai_provider import DEFAULT_MODEL, validate_request as validate_openai
-
-        payload.setdefault("model", DEFAULT_MODEL)
-        validate_openai(payload)
-    elif args.provider == "cloudflare":
-        from decision_cli.cloudflare_provider import DEFAULT_MODEL, model_name, validate_request as validate_cloudflare
-
-        payload["model"] = model_name(payload.get("model", DEFAULT_MODEL))
-        validate_cloudflare(payload)
-    elif args.provider == "gemini":
-        from decision_cli.gemini_provider import DEFAULT_MODEL, validate_request as validate_gemini
-
-        payload.setdefault("model", DEFAULT_MODEL)
-        validate_gemini(payload)
+    default = selected_provider(args).info.default_model
+    if default is not None:
+        payload.setdefault("model", default)
     return payload
 
 
 def connection(args):
-    if args.provider not in {"typesafe", "openai", "cloudflare", "gemini"}:
-        raise ValueError("Provider must be typesafe, openai, cloudflare, or gemini")
+    info = selected_provider(args).info
     if not args.base_url:
-        if args.provider == "openai":
-            args.base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
-        elif args.provider == "cloudflare":
-            args.base_url = os.getenv("CLOUDFLARE_BASE_URL") or "https://api.cloudflare.com/client/v4"
-        elif args.provider == "gemini":
-            from decision_cli.gemini_provider import API_ROOT
-
-            args.base_url = os.getenv("GEMINI_BASE_URL") or API_ROOT
-        else:
-            args.base_url = os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai"
+        args.base_url = (os.getenv(info.base_url_env) if info.base_url_env else None) or info.default_base_url
     url = urlsplit(args.base_url)
     if not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("Base URL must have a host and no credentials, query, or fragment")
     local = url.hostname in {"localhost", "127.0.0.1", "::1"}
     if url.scheme != "https" and not (url.scheme == "http" and local):
         raise ValueError("Base URL requires HTTPS (HTTP is allowed for loopback only)")
-    official = url.scheme == "https" and url.port in (None, 443)
+    official = url.scheme == "https" and url.port in (None, 443) and url.hostname == urlsplit(info.default_base_url).hostname
     names = [args.api_key_env] if args.api_key_env else ["DECISION_API_KEY"]
     if official and not args.api_key_env:
-        if args.provider == "typesafe" and url.hostname == "api.typesafe.ai":
-            names += ["TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY"]
-        elif args.provider == "openai" and url.hostname == "api.openai.com":
-            names += ["OPENAI_API_KEY"]
-        elif args.provider == "cloudflare" and url.hostname == "api.cloudflare.com":
-            names += ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"]
-        elif args.provider == "gemini" and url.hostname == "generativelanguage.googleapis.com":
-            names += ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
-    key = next((os.environ[n].strip() for n in names if os.environ.get(n, "").strip()), None)
-    return key
+        names += info.credential_env_vars
+    return next((os.environ[n].strip() for n in names if os.environ.get(n, "").strip()), None)
 
 
 def validate_connection(args):
@@ -211,53 +194,54 @@ def validate_connection(args):
     return connection(args)
 
 
+def prepare_batch(payload, args, images):
+    from decision_cli.providers import PreparedRequest
+
+    request = deepcopy({key: value for key, value in payload.items() if key != "assets"})
+    try:
+        prepared = selected_provider(args).prepare(request, images)
+        if not isinstance(prepared, PreparedRequest):
+            raise TypeError("Invalid prepared request")
+        validate_request(prepared.request)
+        if (prepared.request["state"] != payload["state"] or prepared.request["questions"] != payload["questions"]
+                or "assets" in prepared.request):
+            raise ProviderError("Provider preparation must preserve state and questions and omit assets")
+        return prepared
+    except (ValueError, ProviderError):
+        raise
+    except Exception:
+        raise ProviderError("Provider request preparation failed; no answers returned") from None
+
+
 def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
     """Shared CLI/MCP operation: one request for all questions sharing state."""
     payload = prepare_request(payload, args, allow_paths=allow_paths)
     from decision_cli.images import load_images
+    from decision_cli.providers import ConnectionSettings
+    from decision_cli.results import validate_result
 
-    image_data = load_images(payload, allow_paths) if image_data is None else image_data
-    payload.pop("assets", None)
+    images = load_images(payload, allow_paths) if image_data is None else image_data
+    prepared = prepare_batch(payload, args, images)
     key = validate_connection(args)
     if not key:
-        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY, OPENAI_API_KEY, CLOUDFLARE_API_TOKEN / CLOUDFLARE_AUTH_TOKEN, or GEMINI_API_KEY / GOOGLE_API_KEY")
-    if args.provider == "cloudflare":
-        from decision_cli.cloudflare_provider import endpoint, prepare_body
-
-        # Configuration and media-limit failures are input errors, before timing/network access.
-        endpoint(args, payload["model"])
-        cloudflare_body = prepare_body(payload, image_data)
-    logging.getLogger("typesafe_sdk").setLevel(logging.CRITICAL)
-    logging.getLogger("openai").setLevel(logging.CRITICAL)
+        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept their provider-specific credential variables")
+    settings = ConnectionSettings(args.base_url, args.timeout, args.account_id)
+    provider = selected_provider(args)
+    try:
+        provider.validate_connection(prepared, settings)
+    except (ValueError, ProviderError):
+        raise
+    except Exception:
+        raise ProviderError("Provider connection validation failed; no answers returned") from None
     try:
         started = time.perf_counter()
-        if args.provider == "openai":
-            from decision_cli.openai_provider import evaluate
+        result = provider.evaluate(prepared, settings, key)
+        # Validate raw values before SDK normalization can coerce invalid answers.
+        validate_result(result, payload["questions"])
+        from typesafe_sdk import SystemOneResponse
 
-            result = evaluate(payload, image_data, args, key)
-        elif args.provider == "cloudflare":
-            from decision_cli.cloudflare_provider import evaluate
-
-            result = evaluate(payload, cloudflare_body, args, key)
-        elif args.provider == "gemini":
-            from decision_cli.gemini_provider import evaluate
-
-            result = evaluate(payload, image_data, args, key)
-        else:
-            from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
-
-            options = {}
-            if image_data:
-                options["assets"] = {name: Image(data) for name, data in image_data.items()}
-            if image_data or any(q["type"] == "box" for q in payload["questions"].values()):
-                options["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
-            with TypeSafeClient(api_key=key, base_url=args.base_url, timeout=args.timeout,
-                                retry=RetryPolicy(max_retries=0), compression=False) as client:
-                response = client.system_one(**payload, **options)
-            result = response.model_dump(mode="json")
-            from decision_cli.results import validate_result
-
-            validate_result(result, payload["questions"])
+        result = SystemOneResponse.model_validate_json(json.dumps(result, allow_nan=False)).model_dump(mode="json")
+        validate_result(result, payload["questions"])
         result["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
         return result
     except ProviderError:
@@ -269,58 +253,22 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
 
 
 def request_schema(provider="typesafe"):
-    """MCP input matches the batch JSON accepted by the CLI."""
-    variants = []
-    for kind in ("noul", "choice", "score", "box"):
-        if provider in {"openai", "cloudflare", "gemini"} and kind == "box":
-            continue
-        fields = {"type": {"const": kind}, "instructions": {"type": "string", "minLength": 1}}
-        required = ["type", "instructions"]
-        if kind == "choice":
-            fields["criteria"] = {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}}
-            if provider in {"openai", "cloudflare", "gemini"}:
-                fields["criteria"].update(minProperties=2, maxProperties=255)
-            if provider == "gemini":
-                fields["criteria"]["propertyNames"]["maxLength"] = 128
-            required.append("criteria")
-        elif kind == "score":
-            fields["criteria"] = {"type": "array", "minItems": 1}
-            if provider in {"openai", "cloudflare", "gemini"}:
-                fields["criteria"].update(minItems=2, maxItems=10)
-            if provider == "gemini":
-                fields["criteria"]["maxItems"] = 255
-            required.append("criteria")
-        elif kind == "noul":
-            fields["criteria"] = {"type": ["object", "null"], "properties": {"true": {}, "false": {}}, "additionalProperties": False}
-        else:
-            fields["criteria"] = {}
-        variants.append({"type": "object", "properties": fields, "required": required, "additionalProperties": False})
-    from decision_cli.images import assets_schema
+    """Providers can restrict, but cannot replace, the common MCP envelope."""
+    from decision_cli.registry import load_provider
+    from decision_cli.schema import request_schema as common_schema
 
-    assets = assets_schema()
-    model = {"type": "string", "minLength": 1, "description": "Optional model override; defaults to server configuration."}
-    if provider == "cloudflare":
-        from decision_cli.cloudflare_provider import MODELS, MAX_IMAGE_BYTES, MAX_IMAGES
-
-        assets["maxProperties"] = MAX_IMAGES
-        assets["additionalProperties"]["properties"]["data_base64"]["maxLength"] = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
-        assets["description"] += " Clef: at most 4 images, 4 MiB each and 8 MiB combined."
-        model["enum"] = [*MODELS, *("@cf/cloudflare/" + name for name in MODELS)]
-    return {
-        "type": "object", "required": ["state", "questions"], "additionalProperties": False,
-        "properties": {
-            "state": {"description": "Shared context for every independent question. JSON value, excluding null.",
-                      "type": ["object", "array", "string", "number", "boolean"]},
-            "questions": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1},
-                          **({"maxProperties": 400} if provider == "openai" else {}),
-                          **({"maxProperties": 64, "propertyNames": {"pattern": r"^[A-Za-z0-9_.-]{1,100}$"}} if provider == "cloudflare" else {}),
-                          **({"maxProperties": 1000, "propertyNames": {"pattern": r"^[A-Za-z0-9_-]{1,64}$"}} if provider == "gemini" else {}),
-                          "description": "Named questions evaluated together in ONE provider request.",
-                          "additionalProperties": {"oneOf": variants}},
-            "model": model,
-            "assets": assets,
-        },
-    }
+    schema = common_schema()
+    selected = load_provider(provider) if isinstance(provider, str) else provider
+    try:
+        constraints = selected.schema_constraints()
+        if not isinstance(constraints, dict):
+            raise TypeError("Invalid schema constraints")
+        json.dumps(constraints, allow_nan=False)
+    except Exception:
+        raise ProviderError("Provider schema generation failed") from None
+    if constraints:
+        schema["allOf"] = [constraints]
+    return schema
 
 
 def response_schema():
@@ -343,10 +291,13 @@ async def serve_mcp(args):
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
 
+    # Resolve once: installed plugins and routing are fixed for this server.
+    schema = request_schema(selected_provider(args))
+
     async def list_tools(_context, _params):
         return types.ListToolsResult(tools=[types.Tool(
             name="evaluate", description="Ask Jev or a System One compatible model multiple typed questions about shared context in one request. Returns answers keyed by question ID, probabilities, model, token usage, and duration_ms for the batch. Does not take actions based on judgments.",
-            inputSchema=request_schema(args.provider), outputSchema=response_schema(),
+            inputSchema=schema, outputSchema=response_schema(),
             annotations=types.ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
         )])
 
@@ -394,11 +345,11 @@ def main(argv=None):
 
         images = load_images(payload, allow_paths=True)
         if args.dry_run:
-            if args.provider == "cloudflare":
-                from decision_cli.cloudflare_provider import prepare_body
-
-                prepare_body(payload, images)
-            print(json.dumps(payload, indent=2, allow_nan=False) if args.json else render_preview(payload, images))
+            prepared = prepare_batch(payload, args, images)
+            preview = dict(prepared.request)
+            if "assets" in payload:
+                preview["assets"] = payload["assets"]
+            print(json.dumps(preview, indent=2, allow_nan=False) if args.json else render_preview(preview, images))
             return 0
         result = evaluate_request(payload, args, allow_paths=True, image_data=images)
         print(json.dumps(result, allow_nan=False) if args.json else render_result(result))

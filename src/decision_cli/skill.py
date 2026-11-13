@@ -132,7 +132,11 @@ on each side and are never resized by this CLI. Check the
 
 ## Provider configuration
 
-- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, `cloudflare`, or `gemini`.
+- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, `cloudflare`, `gemini`, or an installed provider extension.
+- Repeat `--disable-provider NAME` to exclude providers for this invocation.
+  A disabled selection, including via `DECISION_PROVIDER`, fails before loading
+  the provider or sending a request; there is no fallback. MCP exclusions are
+  fixed server startup flags, never tool arguments.
 - `--base-url` overrides `DECISION_BASE_URL`, then the selected provider's
   `TYPESAFE_BASE_URL`, `OPENAI_BASE_URL`, `CLOUDFLARE_BASE_URL`, or `GEMINI_BASE_URL`.
   Defaults are `https://api.typesafe.ai`, `https://api.openai.com/v1`,
@@ -149,6 +153,7 @@ on each side and are never resized by this CLI. Check the
   selected model, TypeSafe uses `TYPESAFE_DEFAULT_MODEL` or its SDK default,
   while OpenAI uses `gpt-6-luna`, Cloudflare uses `clef`, and Gemini uses `gemini-decision-1`.
   MCP per-call model overrides its server default.
+
 - Cloudflare's `--account-id` overrides `DECISION_ACCOUNT_ID`, then
   `CLOUDFLARE_ACCOUNT_ID`. The default API root requires an account ID;
   a custom Cloudflare base URL must be a Workers AI run root, such as
@@ -157,6 +162,14 @@ on each side and are never resized by this CLI. Check the
 - HTTPS is required except on local loopback. Other providers must implement
   the selected System One or Decisions contract; a chat-completions endpoint
   is insufficient. Env files are not loaded automatically.
+
+External providers require installation in the same Python environment as
+`decision`; standalone executables support built-ins only. Providers are trusted
+Python code. Select the registered name with `--provider NAME` or
+`DECISION_PROVIDER`. Extensions share common request/result validation, credential
+host restrictions, and fixed MCP routing. Generated skills and Codex plugin
+exports never discover or execute external providers. Forward custom credential
+variable names with `decision plugin --env-var NAME` for MCP integration.
 
 ```bash
 export DECISION_BASE_URL=https://provider.example/api

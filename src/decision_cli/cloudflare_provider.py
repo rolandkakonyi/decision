@@ -7,6 +7,7 @@ import re
 from decision_cli.errors import ProviderError
 from decision_cli.images import image_format
 from decision_cli.results import validate_result
+from decision_cli.providers import PreparedRequest, ProviderInfo
 
 API_ROOT = "https://api.cloudflare.com/client/v4"
 DEFAULT_MODEL = "clef"
@@ -158,3 +159,35 @@ def evaluate(payload, body, args, key):
     except (ValueError, UnicodeError):
         raise ProviderError("Cloudflare returned invalid JSON; no answers returned") from None
     return normalize_response(raw, payload["questions"])
+
+
+class CloudflareProvider:
+    api_version = 1
+    info = ProviderInfo("cloudflare", API_ROOT, DEFAULT_MODEL, "CLOUDFLARE_BASE_URL",
+                        ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"))
+
+    def prepare(self, request, images):
+        request = dict(request, model=model_name(request["model"]))
+        validate_request(request)
+        return PreparedRequest(request, prepare_body(request, images))
+
+    def validate_connection(self, prepared, settings):
+        endpoint(settings, prepared.request["model"])
+
+    def evaluate(self, prepared, settings, api_key):
+        return evaluate(prepared.request, prepared.data, settings, api_key)
+
+    def schema_constraints(self):
+        from decision_cli.schema import decision_constraints
+
+        schema = decision_constraints(64, id_pattern=QUESTION_ID_PATTERN)
+        schema["properties"]["model"] = {"enum": [*MODELS, *("@cf/cloudflare/" + name for name in MODELS)]}
+        schema["properties"]["assets"] = {
+            "maxProperties": MAX_IMAGES,
+            "description": "Clef: at most 4 images, 4 MiB each and 8 MiB combined.",
+            "additionalProperties": {"properties": {"data_base64": {"maxLength": 4 * ((MAX_IMAGE_BYTES + 2) // 3)}}},
+        }
+        return schema
+
+
+PROVIDER = CloudflareProvider()

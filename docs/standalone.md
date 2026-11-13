@@ -4,6 +4,10 @@ The same program implements terminal commands and `decision mcp`. Build it with
 PyInstaller's one-file mode to bundle Python, the pinned TypeSafe, OpenAI, and MCP SDKs,
 and native dependencies. End users need no Python, uv, or package download.
 The executable still needs access to its configured provider and credentials.
+It supports the bundled TypeSafe, OpenAI, Cloudflare, and Gemini providers.
+Third-party [provider extensions](provider-plugins.md) require a Python
+installation; installing a package beside the executable does not extend its
+frozen runtime.
 
 ## Build
 

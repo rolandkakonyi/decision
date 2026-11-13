@@ -8,6 +8,7 @@ import unicodedata
 from decision_cli.errors import ProviderError
 from decision_cli.images import image_format
 from decision_cli.results import number, validate_result
+from decision_cli.providers import PreparedRequest, ProviderInfo
 
 DEFAULT_MODEL = "gemini-decision-1"
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta"
@@ -123,3 +124,26 @@ def evaluate(payload, images, args, key):
     except (ValueError, UnicodeError):
         raise ProviderError("Gemini returned invalid JSON; no answers returned") from None
     return normalize_response(raw, payload["questions"], payload["model"])
+
+
+class GeminiProvider:
+    api_version = 1
+    info = ProviderInfo("gemini", API_ROOT, DEFAULT_MODEL, "GEMINI_BASE_URL", ("GEMINI_API_KEY", "GOOGLE_API_KEY"))
+
+    def prepare(self, request, images):
+        validate_request(request)
+        return PreparedRequest(request, images)
+
+    def validate_connection(self, prepared, settings):
+        pass
+
+    def evaluate(self, prepared, settings, api_key):
+        return evaluate(prepared.request, prepared.data, settings, api_key)
+
+    def schema_constraints(self):
+        from decision_cli.schema import decision_constraints
+
+        return decision_constraints(1000, max_score=255, id_pattern=QUESTION_ID_PATTERN, option_length=128)
+
+
+PROVIDER = GeminiProvider()

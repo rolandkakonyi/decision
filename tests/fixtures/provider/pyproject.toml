@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "decision-fixture-provider"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[project.entry-points."decision.providers.v1"]
+fixture = "decision_fixture_provider:PROVIDER"
+broken = "missing_decision_fixture:PROVIDER"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/decision_fixture_provider"]

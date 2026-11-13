@@ -83,7 +83,8 @@ class CloudflareProviderTests(unittest.TestCase):
             self.assertEqual(cf.endpoint(args, "clef-flash"), args.base_url + "/@cf/cloudflare/clef-flash")
             for model in ("jev-1.14.0", "clef-omni", "../../other"):
                 with self.subTest(model=model), self.assertRaises(ValueError):
-                    cli.make_request(self.args("--model", model))
+                    args = self.args("--model", model)
+                    cli.prepare_batch(cli.make_request(args), args, {})
 
     def test_question_limits_and_ids_before_network(self):
         payload = {"state": "dog", "questions": QUESTIONS}
