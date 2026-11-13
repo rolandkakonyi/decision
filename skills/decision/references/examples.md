@@ -200,6 +200,29 @@ Both send one request with one image and return `dog_present`, `breed`, and
 replacing image paths with base64 assets. Box is unsupported. Cloudflare limits
 batches to 64 questions and 4 images (4 MiB each / 8 MiB combined).
 
+## Gemini Decisions: Noul, Choice, Score, and batches
+
+Export `GEMINI_API_KEY` and select `--provider gemini`. The default model is
+`gemini-decision-1`. Copy `references/gemini-dog-questions.json` for `ask`, or
+copy `references/gemini-dog-request.json` beside your `dog.jpg` for `run`:
+
+```bash
+decision noul 'Is a dog visible in images.dog?' --image dog=dog.jpg --provider gemini
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider gemini \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+decision score 'How clearly is the dog visible in images.dog?' \
+  --image dog=dog.jpg --provider gemini --level 'Hidden' --level 'Partly visible' --level 'Fully visible'
+decision ask --questions-file gemini-dog-questions.json \
+  --image dog=dog.jpg --provider gemini --json
+decision run gemini-dog-request.json --provider gemini --json
+```
+
+Mixed batches send all three question types with one copy of each image.
+For MCP, start `decision mcp --provider gemini` and replace paths with base64
+assets. Gemini supports up to 1000 questions and 255 score levels; Box is
+unsupported. The harness accepts JSON state and PNG/JPEG images only.
+
 ## Compare two images
 
 ```bash

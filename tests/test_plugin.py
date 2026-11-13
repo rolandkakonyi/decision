@@ -34,6 +34,7 @@ class PluginTests(unittest.TestCase):
                 server = json.loads(files[MCP])["mcpServers"]["decision"]
                 self.assertEqual((server["command"], server["args"]), ("decision", ["mcp"]))
                 self.assertIn("CLOUDFLARE_ACCOUNT_ID", server["env_vars"])
+                self.assertTrue({"GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_BASE_URL"} <= set(server["env_vars"]))
             else:
                 self.assertNotIn("mcpServers", manifest)
                 self.assertNotIn(MCP, files)
@@ -42,7 +43,8 @@ class PluginTests(unittest.TestCase):
         expected = self.files()
         with patch.dict(os.environ, {"DECISION_PROVIDER": "invalid-provider", "DECISION_BASE_URL": "invalid-url",
                                      "DECISION_MODEL": "private-model", "DECISION_API_KEY_ENV": "PRIVATE_KEY",
-                                     "PRIVATE_KEY": "never-export-this-value", "CLOUDFLARE_ACCOUNT_ID": "private-account"}), \
+                                     "PRIVATE_KEY": "never-export-this-value", "CLOUDFLARE_ACCOUNT_ID": "private-account",
+                                     "GEMINI_API_KEY": "never-export-gemini-key"}), \
                 patch.object(cli, "connection", side_effect=AssertionError("no credentials")), \
                 patch.object(cli, "evaluate_request", side_effect=AssertionError("no inference")):
             self.assertEqual(self.files(), expected)
@@ -50,7 +52,7 @@ class PluginTests(unittest.TestCase):
                 self.assertEqual(cli.main(["plugin", "--output", directory]), 0)
                 self.assertEqual(cli.main(["plugin", "--output", directory, "--check"]), 0)
                 output = "".join(p.read_text() for p in Path(directory).rglob("*") if p.is_file())
-                for value in ("invalid-provider", "invalid-url", "private-model", "never-export-this-value", "private-account"):
+                for value in ("invalid-provider", "invalid-url", "private-model", "never-export-this-value", "private-account", "never-export-gemini-key"):
                     self.assertNotIn(value, output)
 
     def test_cache_versions_track_mode_launch_configuration_and_skill_content(self):

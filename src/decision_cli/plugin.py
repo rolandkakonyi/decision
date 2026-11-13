@@ -15,6 +15,7 @@ ENV_VARS = (
     "DECISION_MODEL", "DECISION_ACCOUNT_ID",
     "TYPESAFE_BASE_URL", "TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY", "TYPESAFE_DEFAULT_MODEL",
     "OPENAI_BASE_URL", "OPENAI_API_KEY",
+    "GEMINI_BASE_URL", "GEMINI_API_KEY", "GOOGLE_API_KEY",
     "CLOUDFLARE_BASE_URL", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN", "CLOUDFLARE_ACCOUNT_ID",
 )
 INTEGRATIONS = {
@@ -66,7 +67,7 @@ decision plugin --output /private/decision-plugin-mcp --integration mcp \
 variable names for custom provider keys; values are never copied into files.
 For example, set both `DECISION_API_KEY_ENV=MY_PROVIDER_KEY` and
 `MY_PROVIDER_KEY` in Codex's environment. The standard `DECISION_*` settings,
-TypeSafe/OpenAI/Cloudflare token names, provider base URLs, and Cloudflare
+TypeSafe/OpenAI/Cloudflare/Gemini token names, provider base URLs, and Cloudflare
 account-ID variables are already included. Exports ignore the environment's
 current values, so generation stays reproducible and credential-free.
 
@@ -87,7 +88,7 @@ select one output on each host. If changing the source directory, remove the old
 marketplace with `codex plugin marketplace remove decision-local` before adding
 the new one.
 
-Configure `DECISION_PROVIDER` (`typesafe`, `openai`, or `cloudflare`),
+Configure `DECISION_PROVIDER` (`typesafe`, `openai`, `cloudflare`, or `gemini`),
 `DECISION_MODEL`, `DECISION_BASE_URL`, and `DECISION_API_KEY_ENV` in Codex's
 process environment. Matching official provider hosts accept their standard
 credential variables too. Cloudflare requires `CLOUDFLARE_ACCOUNT_ID` at its
