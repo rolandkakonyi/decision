@@ -27,7 +27,7 @@ def command():
     if explicit:
         return [str(Path(explicit).resolve())]
     suffix = ".exe" if os.name == "nt" else ""
-    for directory in (ROOT / "target/release", ROOT / "target/debug", ROOT / ".state/rust-native/target/debug"):
+    for directory in (ROOT / "target/debug", ROOT / "target/release", ROOT / ".state/rust-native/target/debug"):
         executable = directory / ("decision" + suffix)
         if executable.is_file():
             return [str(executable)]
