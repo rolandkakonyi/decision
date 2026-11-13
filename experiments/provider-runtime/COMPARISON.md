@@ -117,8 +117,8 @@ uv run --locked python experiments/provider-runtime/acceptance.py \
 uv run --locked python experiments/provider-runtime/acceptance.py \
   --binary .state/provider-prototype-go/decision
 uv run --locked python experiments/provider-runtime/compare.py \
-  --python-binary .state/provider-prototype-python/decision \
-  --go-binary .state/provider-prototype-go/decision \
+  --baseline-binary .state/provider-prototype-python/decision --baseline-name Python \
+  --candidate-binary .state/provider-prototype-go/decision --candidate-name Go \
   --output .state/provider-comparison-new
 ```
 

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import statistics
 import subprocess
 import tarfile
@@ -47,7 +48,7 @@ def tree_rss(pid):
 
 def artifact(binary, distribution):
     data = binary.read_bytes()
-    files = {"decision": data, "LICENSE": (binary.parents[2] / "LICENSE").read_bytes()}
+    files = {"decision": data, "LICENSE": (Path(__file__).resolve().parents[2] / "LICENSE").read_bytes()}
     if (binary.parent / "THIRD_PARTY_NOTICES.txt").is_file():
         files["THIRD_PARTY_NOTICES.txt"] = (binary.parent / "THIRD_PARTY_NOTICES.txt").read_bytes()
     else:
@@ -169,8 +170,10 @@ def collect(name, variants, args, evaluate, invoke):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--python-binary", type=Path, required=True)
-    parser.add_argument("--go-binary", type=Path, required=True)
+    parser.add_argument("--baseline-binary", type=Path, required=True)
+    parser.add_argument("--candidate-binary", type=Path, required=True)
+    parser.add_argument("--baseline-name", default="Baseline prototype")
+    parser.add_argument("--candidate-name", default="Candidate prototype")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runs", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
@@ -182,7 +185,7 @@ def main():
     if args.runs < 5 or args.warmups < 1:
         parser.error("require at least five measured runs and one warmup per variant")
     args.output.mkdir(parents=True, exist_ok=False)
-    variants = {"baseline": args.python_binary.resolve(), "candidate": args.go_binary.resolve()}
+    variants = {"baseline": args.baseline_binary.resolve(), "candidate": args.candidate_binary.resolve()}
     evaluate = descriptive_evaluation
     if args.evaluator:
         evaluator_spec = importlib.util.spec_from_file_location("benchmark_evaluator", args.evaluator)
@@ -193,10 +196,14 @@ def main():
               "environment": {"os": platform.platform(), "architecture": platform.machine(),
                               "cpu_count": os.cpu_count(), "python": platform.python_version(),
                               "load_average_start": os.getloadavg(),
-                              "go": subprocess.check_output(["go", "version"], text=True).strip()},
+                              "toolchains": {name: subprocess.check_output(command, text=True).strip()
+                                             for name, command in (("go", ["go", "version"]),
+                                                                   ("rustc", ["rustc", "--version"]),
+                                                                   ("cargo", ["cargo", "--version"]))
+                                             if shutil.which(command[0])}},
               "method": {"runs_per_variant": args.runs, "warmups_per_variant": args.warmups,
-                         "host_label": "local-macos-arm64", "baseline": "Python frozen prototype",
-                         "candidate": "Go native prototype",
+                         "host_label": "local-macos-arm64", "baseline": args.baseline_name,
+                         "candidate": args.candidate_name,
                          "memory": "MCP-ready process-tree RSS snapshot sum, not peak; shared pages can be counted twice",
                          "canonicalization": "Remove duration_ms; normalize integral numeric answer formatting; usage unchanged. MCP projection includes negotiated version and full tool names/input/output schemas; raw metadata retained.",
                          "cold_cache": "Not controlled; first observations are already acceptance-exercised artifacts and are not cold-cache claims"},
