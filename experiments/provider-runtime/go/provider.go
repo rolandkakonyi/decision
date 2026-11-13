@@ -70,7 +70,7 @@ func evaluate(ctx context.Context, o options, p *plugin, r *request, paths bool,
 		return nil, e
 	}
 	_, hasModel := r.data["model"]
-	if o.model != "" && !hasModel {
+	if o.model != "" && (paths || !hasModel) {
 		r.data["model"] = o.model
 	} else if _, ok := r.data["model"]; !ok && p != nil && p.Model != "" {
 		r.data["model"] = p.Model
