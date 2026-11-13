@@ -205,7 +205,7 @@ async def serve(args):
                 if params.name != "evaluate":
                     raise ValueError("Unknown inference tool")
                 result = await host.evaluate(arguments)
-            # MCP structuredContent is an object, while provider_list returns an array.
+            # List results retain their CLI array shape in JSON text content.
             return types.CallToolResult(content=[types.TextContent(type="text", text=json.dumps(result, allow_nan=False))], structuredContent=result if isinstance(result, dict) else None)
         except (ValueError, ProviderError):
             return types.CallToolResult(isError=True, content=[types.TextContent(type="text", text="Invalid request or provider operation failed")])
