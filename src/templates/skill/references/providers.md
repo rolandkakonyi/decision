@@ -3,7 +3,7 @@
 Decision runs trusted provider executables as separate processes. A provider can
 use any language; its author supplies packaging, dependency pins and optional
 setup. Users install the runtime that command needs. The native host and its
-exports need no Python or Go installation.
+exports require no interpreter.
 
 ## Install explicitly
 
