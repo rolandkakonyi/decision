@@ -1,0 +1,23 @@
+{
+  "dog_present": {
+    "type": "noul",
+    "instructions": "Is a dog visible in images.dog?"
+  },
+  "breed": {
+    "type": "choice",
+    "instructions": "Which breed is the dog in images.dog?",
+    "criteria": {
+      "french_bulldog": "French bulldog",
+      "english_bulldog": "English bulldog"
+    }
+  },
+  "face_visibility": {
+    "type": "score",
+    "instructions": "How clearly is the face of the dog in images.dog visible?",
+    "criteria": [
+      "The face is not visible",
+      "The face is partly visible or obscured",
+      "The entire face is clearly visible"
+    ]
+  }
+}
