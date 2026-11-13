@@ -63,7 +63,7 @@ class CloudflareTransportTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="cloudflare",
+        self.environment = isolate(dict(DECISION_PROVIDER="cloudflare",
                                        DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom/run",
                                        DECISION_API_KEY_ENV="CF_FIXTURE_KEY", CF_FIXTURE_KEY="cf-fixture-secret",
                                        CLOUDFLARE_API_TOKEN="do-not-forward", OPENAI_API_KEY="do-not-forward",

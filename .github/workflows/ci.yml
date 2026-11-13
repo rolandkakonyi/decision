@@ -5,40 +5,109 @@ on: [push, pull_request]
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  source:
-    name: Source (${{ matrix.os }}, Python ${{ matrix.python }})
+  native:
+    name: Native (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            python: '3.11'
-          - os: ubuntu-latest
-            python: '3.14'
+            target: x86_64-unknown-linux-gnu
+            exe: ''
           - os: macos-latest
-            python: '3.14'
+            target: aarch64-apple-darwin
+            exe: ''
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: '.exe'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/target/release/decision${{ matrix.exe }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.94.1 --profile minimal --component clippy --component rustfmt
+      - name: Install Windows assembler for AWS-LC
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            "$env:ProgramFiles\NASM" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-1.94.1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-1.94.1-
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          python-version: ${{ matrix.python }}
+          python-version: '3.14'
           enable-cache: true
           cache-python: true
           cache-dependency-glob: |
             uv.lock
             pyproject.toml
-          cache-suffix: source-${{ matrix.python }}
+          cache-suffix: native-${{ matrix.target }}
       - run: uv sync --locked
-      - run: uv run --locked decision skill --output skills/decision --check
-      - run: uv run --locked python -m unittest discover -s tests -v
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked --release
+      - run: ./target/release/decision${{ matrix.exe }} skill --output skills/decision --check
+      - name: Verify native CLI, providers, and MCP against local fixtures
+        run: uv run --locked python scripts/run_native_tests.py --exclude test_codex_plugin.py
+      - name: Package native executable and notices
+        run: uv run --locked python scripts/build_standalone.py --output .state/dist
+      - name: Verify native target
+        env:
+          EXPECTED_TARGET: ${{ matrix.target }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          manifest = json.loads(Path('.state/dist/build-manifest.json').read_text(encoding='utf-8'))
+          assert manifest['target'] == os.environ['EXPECTED_TARGET'], manifest['target']
+          PY
+      - name: Verify extracted archive, runtime isolation, exports, and packaged fixtures
+        run: uv run --locked python scripts/verify_distribution.py --distribution .state/dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: decision-native-${{ matrix.target }}
+          path: |
+            .state/dist/*.tar.gz
+            .state/dist/*.zip
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
 
   plugin:
     name: Native Codex plugin installation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/target/release/decision
+      DECISION_TEST_CODEX: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.94.1 --profile minimal --component clippy --component rustfmt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            target
+          key: cargo-plugin-${{ runner.os }}-${{ runner.arch }}-1.94.1-${{ hashFiles('Cargo.lock') }}
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: '3.14'
@@ -53,66 +122,20 @@ jobs:
           path: ~/.npm
           key: npm-codex-${{ runner.os }}-0.163.0
       - run: npm install --global @openai/codex@0.163.0
+      - run: codex --version
       - run: uv sync --locked
-      - run: uv run --locked python -m unittest discover -s tests -p test_codex_plugin.py -v
-
-  wheel:
-    name: Clean wheel installation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          python-version: '3.14'
-          enable-cache: true
-          cache-python: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-          cache-suffix: wheel-3.14
-      - run: uv sync --locked
-      - run: uv run --locked python scripts/verify_wheel.py
-
-  standalone:
-    name: Standalone (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          python-version: '3.14'
-          enable-cache: true
-          cache-python: true
-          cache-dependency-glob: |
-            uv.lock
-            pyproject.toml
-          cache-suffix: standalone-3.14
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .state/pyinstaller-cache
-          key: pyinstaller-${{ runner.os }}-${{ runner.arch }}-3.14-${{ hashFiles('uv.lock', 'pyproject.toml', 'scripts/build_standalone.py') }}
-      - run: uv sync --locked --group build
-      - run: uv run --locked --group build python scripts/build_standalone.py --output .state/dist --cache-dir .state/pyinstaller-cache
-      - run: .state/dist/decision skill --output skills/decision --check
-      - name: Verify standalone license notices
-        env:
-          DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/.state/dist/decision
-        run: uv run --locked --group build python -m unittest discover -s tests -p test_standalone.py -v
-      - name: Verify standalone CLI and MCP without inference
-        env:
-          DECISION_TEST_EXECUTABLE: ${{ github.workspace }}/.state/dist/decision
-          DECISION_TEST_MODE: standalone
-        run: uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
+      - run: cargo build --locked --release
+      - name: Require real Codex plugin discovery and installation
+        run: uv run --locked python -m unittest discover -s tests -p test_codex_plugin.py -v
 
   release:
     name: GitHub release
-    needs: [source, plugin, wheel, standalone]
+    needs: [native, plugin]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: decision-release-main
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -120,33 +143,30 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: '3.14'
-      - name: Check whether the package version is released
+      - name: Select an untagged Cargo version
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="$(python -c 'import pathlib, tomllib; print("v" + tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists."
-          else
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Build release distributions
+        run: python scripts/release_version.py
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.version.outputs.tag != ''
-        run: uv build --out-dir .state/release
-      - name: Publish release
+        with:
+          pattern: decision-native-*
+          path: .state/release
+          merge-multiple: true
+      - name: Generate release archive checksums
+        if: steps.version.outputs.tag != ''
+        run: python scripts/release_version.py --checksums .state/release
+      - name: Publish new tag and native distributions
         if: steps.version.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists."
-            exit 0
-          fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
             -f tag_name="$RELEASE_TAG" -f target_commitish="$GITHUB_SHA" \
             --jq .body > .state/release-notes.md
-          gh release create "$RELEASE_TAG" .state/release/*.whl .state/release/*.tar.gz \
-            --target "$GITHUB_SHA" --title "$RELEASE_TAG" \
-            --notes-file .state/release-notes.md
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA" > /dev/null
+          gh release create "$RELEASE_TAG" .state/release/*.tar.gz .state/release/*.zip .state/release/SHA256SUMS \
+            --verify-tag --title "$RELEASE_TAG" --notes-file .state/release-notes.md

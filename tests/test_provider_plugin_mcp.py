@@ -1,164 +1,411 @@
-"""External entry-point CLI/MCP conformance, including clean wheel installs."""
+"""Native executable provider install, CLI, and MCP conformance."""
 
+import argparse
 import asyncio
-import base64
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from copy import deepcopy
 import json
+import math
 import os
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
-import threading
+import time
 import unittest
 
-from test_images import png_bytes
-from transport import command, isolate, working_directory
+from runtime_fixtures import MCP, PNG, REQUEST, archive, environment, image_request, package, provider_server, structured
+from plugin_fixture import answers_for
 
-ROOT = Path(__file__).resolve().parents[1]
-REQUEST = {"state": "context", "questions": {"q": {"type": "noul", "instructions": "True?"}}}
-MODE = os.getenv("DECISION_TEST_MODE", "standalone" if os.getenv("DECISION_TEST_EXECUTABLE") else "source")
+from native import command
+BINARY = command()[0]
 
 
-@unittest.skipIf(MODE == "standalone", "external providers require a Python installation")
-class ExternalProviderTransportTests(unittest.TestCase):
+def running(pid):
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return code.value == 259
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(state) and not state.startswith("Z")
+
+
+class Acceptance(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="decision-external-provider-")
+        self.directory = tempfile.TemporaryDirectory(prefix="decision-prototype-")
         self.addCleanup(self.directory.cleanup)
-        self.workspace = Path(self.directory.name)
-        self.requests = []
-        requests = self.requests
+        self.root = Path(self.directory.name)
+        self.home = self.root / "plugins"
+        self.env = environment()
+        self.marker = self.root / "launches.jsonl"
+        self.source = package(self.root / "source", marker=self.marker)
 
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                requests.append((self.path, self.headers.get("Authorization"), body))
-                result = {"model": body["model"], "answers": {key: {"type": "noul", "noul": .75} for key in body["questions"]},
-                          "usage": {"input_tokens": 0}, "duration_ms": 999999}
-                mode = body["state"]
-                if mode == "invalid":
-                    result["answers"]["q"]["noul"] = "fixture-secret private response"
-                self.send_response(302 if mode == "redirect" else 200)
-                self.send_header("Content-Type", "application/json")
-                if mode == "redirect":
-                    self.send_header("Location", "/must-not-follow")
-                self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
+    def cli(self, *args, data=None, env=None, success=True):
+        result = subprocess.run([BINARY, *map(str, args)], input=data, capture_output=True, text=True,
+                                env=env or self.env, timeout=35)
+        if success:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("fixture-only-key", result.stderr)
+        self.assertNotIn("provider-private-body", result.stderr)
+        return result
 
-            def log_message(self, *_):
-                pass
+    def install(self, source=None, *extra):
+        result = self.cli("providers", "install", source or self.source, "--plugin-home", self.home, *extra)
+        value = json.loads(result.stdout)
+        self.assertEqual(value["name"], "fixture")
+        self.assertTrue(value["restart_required"])
+        return value
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        self.addCleanup(self.close_server)
-        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="fixture", DECISION_MODEL="server-model",
-                                       DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/api",
-                                       DECISION_API_KEY_ENV="EXTERNAL_KEY", EXTERNAL_KEY="fixture-secret",
-                                       DECISION_ACCOUNT_ID="", CLOUDFLARE_ACCOUNT_ID=""))
-        if MODE == "source":
-            # Source processes use the same real entry-point metadata format;
-            # verify_wheel installs the separately built distribution instead.
-            metadata = self.workspace / "decision_fixture_provider-1.0.0.dist-info"
-            metadata.mkdir()
-            (metadata / "METADATA").write_text("Metadata-Version: 2.3\nName: decision-fixture-provider\nVersion: 1.0.0\n")
-            (metadata / "entry_points.txt").write_text("[decision.providers.v1]\nfixture = decision_fixture_provider:PROVIDER\nbroken = missing_decision_fixture:PROVIDER\n")
-            self.environment["PYTHONPATH"] = os.pathsep.join((str(self.workspace), str(ROOT / "tests/fixtures/provider/src"), str(ROOT / "src")))
+    def run_payload(self, payload, provider="typesafe", *extra, env=None, success=True):
+        return self.cli("run", "-", "--json", "--provider", provider, "--plugin-home", self.home,
+                        *extra, data=json.dumps(payload), env=env, success=success)
 
-    def close_server(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
+    def mcp_command(self, provider="typesafe", *extra):
+        return [BINARY, "mcp", "--provider", provider, "--plugin-home", str(self.home), *map(str, extra)]
 
-    def run_cli(self, *args, payload=None):
-        return subprocess.run([*command(), *args], input=json.dumps(payload) if payload else None,
-                              env=self.environment, cwd=working_directory(), text=True, capture_output=True, timeout=30)
+    def assert_result(self, result, request=REQUEST):
+        self.assertEqual(result["answers"], answers_for(request))
+        self.assertEqual(result["usage"], {"input_tokens": 0, "output_tokens": None})
+        self.assertIs(type(result["usage"]["input_tokens"]), int)
+        self.assertIsNot(type(result["duration_ms"]), bool)
+        self.assertTrue(math.isfinite(result["duration_ms"]))
+        self.assertGreaterEqual(result["duration_ms"], 0)
+        self.assertEqual(result["model"], request["model"])
 
-    def test_cli_discovery_defaults_images_errors_and_offline_exports(self):
-        self.environment.pop("DECISION_MODEL")
-        result = self.run_cli("run", "-", "--dry-run", "--json", payload=REQUEST)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["model"], "fixture-default")
-        self.assertEqual(self.requests, [])
-        image = self.workspace / "image.png"
-        image.write_bytes(png_bytes())
-        result = self.run_cli("run", "-", "--json", "--image", f"photo={image}", payload=REQUEST)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        data = json.loads(result.stdout)
-        self.assertEqual(data["usage"], {"input_tokens": 0, "output_tokens": None})
-        self.assertLess(data["duration_ms"], 999999)
-        path, key, body = self.requests[0]
-        self.assertEqual((path, key, body["model"]), ("/api/evaluate", "Bearer fixture-secret", "fixture-default"))
-        self.assertEqual(base64.b64decode(body["images"]["<decision-image:photo>"]), png_bytes())
-        self.assertNotIn("assets", body)
-        self.assertEqual(len(self.requests), 1)
-        for mode in ("invalid", "redirect"):
-            before = len(self.requests)
-            result = self.run_cli("run", "-", "--json", payload={**REQUEST, "state": mode})
-            self.assertEqual((result.returncode, result.stdout), (1, ""), result.stderr)
-            self.assertNotIn("fixture-secret", result.stderr)
-            self.assertNotIn("private response", result.stderr)
-            self.assertEqual(len(self.requests), before + 1)
-        result = self.run_cli("noul", "True?", "--state", "x", "--provider", "broken", "--dry-run")
-        self.assertEqual((result.returncode, result.stdout), (2, ""))
-        self.assertNotIn("missing_decision_fixture", result.stderr)
-        exported = self.workspace / "skill"
-        result = self.run_cli("skill", "--output", str(exported))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for path in (ROOT / "skills/decision").rglob("*"):
-            if path.is_file():
-                self.assertEqual((exported / path.relative_to(ROOT / "skills/decision")).read_bytes(), path.read_bytes())
+    def records(self):
+        return [json.loads(line) for line in self.marker.read_text().splitlines()] if self.marker.exists() else []
 
-    def test_mcp_fixed_settings_constraints_model_override_and_recovery(self):
-        from jsonschema import ValidationError, validate
+    def test_version_without_credentials_or_runtime_path(self):
+        result = self.cli("--version", env={**environment(), "PATH": "/nonexistent", "HOME": str(self.root)})
+        import tomllib
+        version = tomllib.loads((Path(__file__).resolve().parents[1] / "Cargo.toml").read_text())["package"]["version"]
+        self.assertEqual(result.stdout, f"decision {version}\n")
+
+    def test_typesafe_cli_batch_and_integer_state(self):
+        with provider_server() as (url, requests):
+            result = json.loads(self.run_payload(REQUEST, "typesafe", "--base-url", url + "/custom").stdout)
+        self.assert_result(result)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["path"], "/custom/v1/systemone")
+        self.assertEqual(requests[0]["auth"], "Bearer fixture-only-key")
+        self.assertEqual(requests[0]["body"]["state"]["large"], 9007199254740993)
+        self.assertNotIn("duration_ms", requests[0]["body"])
+
+    def test_typesafe_model_environment_precedence(self):
+        payload = {key: value for key, value in REQUEST.items() if key != "model"}
+        for mode, expected in (("default", "jev-latest"), ("sdk", "sdk-custom"),
+                               ("decision", "decision-custom"), ("cli", "cli-custom"),
+                               ("request", "cli-custom"), ("request_only", "request-custom")):
+            with self.subTest(mode=mode), provider_server() as (url, requests):
+                env = environment()
+                env.pop("DECISION_MODEL")
+                current = deepcopy(payload)
+                extra = []
+                if mode != "default":
+                    env["TYPESAFE_DEFAULT_MODEL"] = "sdk-custom"
+                if mode in {"decision", "cli", "request"}:
+                    env["DECISION_MODEL"] = "decision-custom"
+                if mode in {"cli", "request"}:
+                    extra = ["--model", "cli-custom"]
+                if mode in {"request", "request_only"}:
+                    current["model"] = "request-custom"
+                result = self.run_payload(current, "typesafe", "--base-url", url, *extra, env=env)
+                self.assertEqual(json.loads(result.stdout)["model"], expected)
+                self.assertEqual(requests[-1]["body"]["model"], expected)
+
+    def test_typesafe_cli_png_box_multipart(self):
+        payload = image_request()
+        with provider_server() as (url, requests):
+            result = json.loads(self.run_payload(payload, "typesafe", "--base-url", url).stdout)
+        self.assert_result(result, payload)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(list(requests[0]["uploads"].values()), [PNG])
+        self.assertEqual(requests[0]["opt_in"], "true")
+        part = next(iter(requests[0]["uploads"]))
+        self.assertEqual(requests[0]["body"]["assets"], {"<photo>": {"type": "image", "part": part}})
+
+    def test_cli_path_image_and_credential_free_preview(self):
+        payload = image_request()
+        image = self.root / "photo.png"
+        image.write_bytes(PNG)
+        payload["assets"]["<photo>"] = {"path": str(image), "format": "png"}
+        env = {key: value for key, value in self.env.items() if key != "FIXTURE_KEY"}
+        with provider_server() as (url, requests):
+            preview = json.loads(self.run_payload(payload, "typesafe", "--base-url", url, "--dry-run", env=env).stdout)
+            self.assertEqual(preview["state"], payload["state"])
+            self.assertEqual(preview["questions"], payload["questions"])
+            self.assertEqual(requests, [])
+            result = json.loads(self.run_payload(payload, "typesafe", "--base-url", url).stdout)
+        self.assert_result(result, payload)
+        self.assertEqual(list(requests[0]["uploads"].values()), [PNG])
+
+    def test_typesafe_atomic_errors_and_no_redirect_retry(self):
+        with provider_server() as (url, requests):
+            for mode in ("missing_answer", "negative_usage", "provider_error", "redirect"):
+                with self.subTest(mode=mode):
+                    before = len(requests)
+                    payload = {**REQUEST, "state": {"fixture_mode": mode}}
+                    result = self.run_payload(payload, "typesafe", "--base-url", url, success=False)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(len(requests), before + 1)
+
+    def test_local_install_setup_and_plugin_evaluation(self):
+        self.install()
+        markers = list(self.home.rglob("setup-ran"))
+        self.assertEqual(len(markers), 1)
+        modified = markers[0].stat().st_mtime_ns
+        result = json.loads(self.run_payload(REQUEST, "fixture").stdout)
+        self.assert_result(result)
+        self.assertEqual(markers[0].stat().st_mtime_ns, modified)
+        records = self.records()
+        self.assertIn("evaluate", [item.get("method") for item in records])
+        self.assertTrue(all(item["integer"] == 9007199254740993 for item in records if item.get("method") in {"prepare", "evaluate"}))
+
+    def test_disabled_provider_never_launches(self):
+        self.install()
+        self.marker.unlink(missing_ok=True)
+        result = self.run_payload(REQUEST, "fixture", "--disable-provider", "fixture", success=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.records(), [])
+
+    def test_external_raw_result_validation_and_safe_errors(self):
+        self.install()
+        for mode in ("missing_answer", "wrong_type", "negative_usage", "float_usage", "bool_answer",
+                     "leak_error", "malformed_output", "duplicate_output", "mutated_prepare"):
+            with self.subTest(mode=mode):
+                result = self.run_payload({**REQUEST, "state": {"fixture_mode": mode}}, "fixture", success=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+    def test_external_dry_run_has_no_evaluation_or_setup(self):
+        self.install()
+        self.marker.unlink(missing_ok=True)
+        env = {key: value for key, value in self.env.items() if key != "FIXTURE_KEY"}
+        preview = json.loads(self.run_payload(REQUEST, "fixture", "--dry-run", env=env).stdout)
+        self.assertEqual(preview["state"], REQUEST["state"])
+        self.assertNotIn("evaluate", [item["method"] for item in self.records()])
+
+    def test_failed_setup_preserves_active_registration(self):
+        self.install()
+        broken = package(self.root / "broken", "2.0.0", setup_fails=True)
+        result = self.cli("providers", "install", broken, "--plugin-home", self.home, success=False)
+        self.assertNotEqual(result.returncode, 0)
+        entries = json.loads(self.cli("providers", "list", "--plugin-home", self.home).stdout)
+        self.assertEqual(next(item for item in entries if item["name"] == "fixture")["version"], "1.0.0")
+        self.assert_result(json.loads(self.run_payload(REQUEST, "fixture").stdout))
+
+    def test_git_install_pinned_source(self):
+        for args in (["init", "--initial-branch=main"], ["add", "."],
+                     ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "Fixture package"]):
+            subprocess.run(["git", *args], cwd=self.source, capture_output=True, check=True)
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.source, text=True).strip()
+        self.install("git+" + self.source.as_uri() + "#" + revision)
+        self.assert_result(json.loads(self.run_payload(REQUEST, "fixture").stdout))
+
+    def test_archive_install_verifies_hash(self):
+        digest = archive(self.source, self.root / "fixture.tar.gz")
+        with provider_server(self.root) as (url, _):
+            result = self.cli("providers", "install", url + "/fixture.tar.gz", "--sha256", "0" * 64,
+                              "--plugin-home", self.home, success=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.install(url + "/fixture.tar.gz", "--sha256", digest)
+        self.assert_result(json.loads(self.run_payload(REQUEST, "fixture").stdout))
+
+    def test_project_configuration_is_explicit(self):
+        project = self.root / "project" / "providers.json"
+        self.install(None, "--project-config", project)
+        global_entries = json.loads(self.cli("providers", "list", "--plugin-home", self.home).stdout)
+        self.assertNotIn("fixture", [item["name"] for item in global_entries])
+        project_entries = json.loads(self.cli("providers", "list", "--plugin-home", self.home,
+                                              "--project-config", project).stdout)
+        self.assertIn("fixture", [item["name"] for item in project_entries])
+        result = self.run_payload(REQUEST, "fixture", "--project-config", project)
+        self.assert_result(json.loads(result.stdout))
+
+    def test_typesafe_mcp_schema_images_and_routing_rejection(self):
+        from jsonschema import validate
+        with provider_server() as (url, requests):
+            with MCP(self.mcp_command("typesafe", "--base-url", url)) as client:
+                tools = client.request("tools/list", {})["tools"]
+                self.assertEqual([item["name"] for item in tools], ["evaluate"])
+                validate(REQUEST, tools[0]["inputSchema"])
+                self.assertIn("answers", tools[0]["outputSchema"]["properties"])
+                result = client.call("evaluate", image_request())
+                self.assertFalse(result.get("isError", False))
+                self.assert_result(structured(result))
+                self.assertEqual(list(requests[-1]["uploads"].values()), [PNG])
+                before = len(requests)
+                for invalid in ({**REQUEST, "provider": "fixture"},
+                                {**REQUEST, "assets": {"<photo>": {"path": "/local/photo.png"}}}):
+                    result = client.call("evaluate", invalid)
+                    self.assertTrue(result.get("isError"))
+                    self.assertEqual(len(requests), before)
+
+    def test_mcp_and_plugin_accept_maximum_asset_frame(self):
+        import base64
+        self.install()
+        image = PNG + b"\0" * (16 * 1024 * 1024 - len(PNG))
+        encoded = base64.b64encode(image).decode()
+        payload = deepcopy(REQUEST)
+        payload["state"]["images"] = ["<photo>", "<second-photo>"]
+        payload["assets"] = {name: {"data_base64": encoded, "format": "png"}
+                             for name in ("<photo>", "<second-photo>")}
+        with MCP(self.mcp_command("fixture", "--timeout", "20")) as client:
+            result = client.call("evaluate", payload)
+            self.assertFalse(result.get("isError", False))
+            self.assert_result(structured(result), payload)
+
+    def test_management_mcp_install_list_remove_and_new_inference(self):
+        with MCP(self.mcp_command("typesafe", "--management")) as manager:
+            tools = manager.request("tools/list", {})["tools"]
+            self.assertEqual({item["name"] for item in tools}, {"provider_install", "provider_list", "provider_remove"})
+            result = manager.call("provider_install", {"source": str(self.source)})
+            self.assertFalse(result.get("isError", False))
+            self.assertEqual(structured(result)["name"], "fixture")
+            entries = structured(manager.call("provider_list", {}))
+            self.assertIn("fixture", [item["name"] for item in entries])
+            with MCP(self.mcp_command("fixture")) as inference:
+                result = inference.call("evaluate", REQUEST)
+                self.assertFalse(result.get("isError", False))
+                self.assert_result(structured(result))
+            result = manager.call("provider_remove", {"name": "fixture"})
+            self.assertTrue(structured(result)["removed"])
+
+    def test_official_mcp_client_accepts_management_results(self):
         from mcp import ClientSession
         from mcp.client.stdio import StdioServerParameters, stdio_client
 
         async def check():
-            cmd = command()
-            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp", "--disable-provider", "broken"], env=self.environment, cwd=working_directory())
-            async with stdio_client(parameters) as (read, write):
-                async with ClientSession(read, write, read_timeout_seconds=30) as session:
-                    await session.initialize()
-                    tool = (await session.list_tools()).tools[0]
-                    validate(REQUEST, tool.input_schema)
-                    result = await session.call_tool("evaluate", REQUEST)
-                    self.assertFalse(result.is_error, result.content)
-                    self.assertEqual(result.structured_content["model"], "server-model")
-                    result = await session.call_tool("evaluate", {**REQUEST, "model": "per-call"})
-                    self.assertFalse(result.is_error, result.content)
-                    self.assertEqual(result.structured_content["model"], "per-call")
-                    validate(result.structured_content, tool.output_schema)
-                    for field in ("provider", "base_url", "api_key_env", "account_id", "disable_provider"):
-                        invalid = {**REQUEST, field: "override"}
-                        with self.assertRaises(ValidationError):
-                            validate(invalid, tool.input_schema)
-                        self.assertTrue((await session.call_tool("evaluate", invalid)).is_error)
-                    too_many = {**REQUEST, "questions": {str(i): REQUEST["questions"]["q"] for i in range(3)}}
-                    with self.assertRaises(ValidationError):
-                        validate(too_many, tool.input_schema)
-                    self.assertTrue((await session.call_tool("evaluate", too_many)).is_error)
-                    self.assertEqual(len(self.requests), 2)
-                    result = await session.call_tool("evaluate", {**REQUEST, "state": "invalid"})
-                    self.assertTrue(result.is_error)
-                    self.assertIsNone(result.structured_content)
-                    self.assertNotIn("fixture-secret", result.content[0].text)
-                    result = await session.call_tool("evaluate", REQUEST)
-                    self.assertFalse(result.is_error, result.content)
-                    self.assertEqual(result.structured_content["model"], "server-model")
-                    self.assertTrue(all(path == "/api/evaluate" and key == "Bearer fixture-secret" for path, key, _ in self.requests))
-
+            command = self.mcp_command("typesafe", "--management")
+            params = StdioServerParameters(command=command[0], args=command[1:], env=self.env)
+            with tempfile.TemporaryFile(mode="w+") as diagnostics:
+                async with stdio_client(params, errlog=diagnostics) as (read, write):
+                    async with ClientSession(read, write, read_timeout_seconds=20) as session:
+                        await session.initialize()
+                        tools = (await session.list_tools()).tools
+                        self.assertEqual({tool.name for tool in tools}, {"provider_install", "provider_list", "provider_remove"})
+                        for name, args in (("provider_install", {"source": str(self.source)}),
+                                           ("provider_list", {}), ("provider_remove", {"name": "fixture"})):
+                            result = await session.call_tool(name, args)
+                            self.assertFalse(result.is_error)
+                            self.assertTrue(result.content or result.structured_content)
         asyncio.run(check())
 
-    def test_disabled_installed_plugin_rejects_cli_and_mcp_before_network(self):
-        for args in (("run", "-", "--json"), ("run", "-", "--dry-run", "--json"), ("mcp",)):
-            result = self.run_cli(*args, "--disable-provider", "fixture", payload=REQUEST)
-            self.assertEqual((result.returncode, result.stdout), (2, ""))
-            self.assertIn("disabled for this invocation", result.stderr)
-        self.assertEqual(self.requests, [])
-        result = self.run_cli("run", "-", "--disable-provider", "broken", "--disable-provider", "other", "--json", payload=REQUEST)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(self.requests), 1)
+    def test_running_mcp_keeps_pinned_artifact_after_update_and_remove(self):
+        self.install()
+        payload = {**REQUEST, "state": {"fixture_mode": "version"}}
+        with MCP(self.mcp_command("fixture")) as old:
+            self.assertEqual(structured(old.call("evaluate", payload))["answers"]["red"]["noul"], 0.1)
+            new_source = package(self.root / "updated", "2.0.0")
+            self.install(new_source)
+            self.assertEqual(structured(old.call("evaluate", payload))["answers"]["red"]["noul"], 0.1)
+            with MCP(self.mcp_command("fixture")) as new:
+                self.assertEqual(structured(new.call("evaluate", payload))["answers"]["red"]["noul"], 0.2)
+            self.cli("providers", "remove", "fixture", "--plugin-home", self.home)
+            self.assertEqual(structured(old.call("evaluate", payload))["answers"]["red"]["noul"], 0.1)
 
+    def assert_processes_stop(self, pids):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and any(running(pid) for pid in pids):
+            time.sleep(0.05)
+        remaining = [pid for pid in pids if running(pid)]
+        for pid in remaining:
+            os.kill(pid, signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
+        self.assertEqual(remaining, [], "plugin processes remained alive")
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_cli_timeout_reaps_plugin_process_group(self):
+        self.install()
+        result = self.run_payload({**REQUEST, "state": {"fixture_mode": "hang"}}, "fixture", "--timeout", "1", success=False)
+        self.assertEqual(result.returncode, 1)
+        records = self.records()
+        pids = [item["pid"] for item in records if item.get("method") == "evaluate"]
+        pids += [item["child_pid"] for item in records if "child_pid" in item]
+        self.assertGreaterEqual(len(pids), 2)
+        self.assert_processes_stop(pids)
+
+    def test_mcp_cancellation_reaps_plugin_process_group(self):
+        self.install()
+        with MCP(self.mcp_command("fixture", "--timeout", "20")) as client:
+            identifier = client.start("tools/call", {"name": "evaluate", "arguments": {**REQUEST, "state": {"fixture_mode": "hang"}}})
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline and not any("child_pid" in item for item in self.records()):
+                time.sleep(0.05)
+            records = self.records()
+            pids = [item["pid"] for item in records if item.get("method") == "evaluate"]
+            pids += [item["child_pid"] for item in records if "child_pid" in item]
+            self.assertGreaterEqual(len(pids), 2)
+            client.notify("notifications/cancelled", {"requestId": identifier, "reason": "fixture cancellation"})
+            self.assert_processes_stop(pids)
+            client.request("ping", {})
+
+    @unittest.skipUnless(os.name == "posix", "SIGINT delivery requires Unix signals")
+    def test_cli_interrupt_keeps_exit_status_and_reaps_plugin_tree(self):
+        self.install()
+        payload = {**REQUEST, "state": {"fixture_mode": "hang"}}
+        process = subprocess.Popen([BINARY, "run", "-", "--json", "--provider", "fixture",
+                                    "--plugin-home", str(self.home), "--timeout", "20"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, env=self.env)
+        try:
+            process.stdin.write(json.dumps(payload))
+            process.stdin.close()
+            process.stdin = None
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not any("child_pid" in item for item in self.records()):
+                time.sleep(.02)
+            records = self.records()
+            pids = [item["pid"] for item in records if item.get("method") == "evaluate"]
+            pids += [item["child_pid"] for item in records if "child_pid" in item]
+            self.assertGreaterEqual(len(pids), 2)
+            process.send_signal(signal.SIGINT)
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 130, stderr)
+            self.assertEqual(stdout, "")
+            self.assert_processes_stop(pids)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+
+    def test_local_package_can_contain_its_plugin_home(self):
+        self.home = self.source / ".providers"
+        self.install()
+        self.assert_result(json.loads(self.run_payload(REQUEST, "fixture").stdout))
+        artifacts = list((self.home / "artifacts").iterdir())
+        self.assertEqual(len(artifacts), 1)
+        self.assertFalse(any(path.name == "artifacts" for path in artifacts[0].rglob("*")))
+
+    @unittest.skipUnless(os.name == "posix", "SIGINT delivery requires Unix signals")
+    def test_interrupt_while_waiting_for_stdin_exits_without_eof(self):
+        for _ in range(3):
+            process = subprocess.Popen([BINARY, "run", "-", "--dry-run", "--json"],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       env=self.env)
+            try:
+                time.sleep(.2)
+                process.send_signal(signal.SIGINT)
+                self.assertEqual(process.wait(timeout=3), 130)
+                stdout, _ = process.communicate(timeout=3)
+                self.assertEqual(stdout, b"")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=3)

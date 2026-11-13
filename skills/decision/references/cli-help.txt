@@ -1,125 +1,531 @@
-decision command reference
+Ask typed questions through TypeSafe, OpenAI/Gemini Decisions, or Cloudflare Clef.
 
-decision
-  -h, --help: show this help message and exit
-  --version: show program's version number and exit
-  --json: Print evaluation or request preview as JSON
+Usage: decision [OPTIONS] <COMMAND>
 
-decision skill
-  -h, --help: show this help message and exit
-  --output OUTPUT: Write SKILL.md and references into this directory
-  --check: Verify an exported skill matches this tool
+Commands:
+  noul       Ask a yes/no probability question
+  choice     Choose among named options
+  score      Score against ordered levels
+  box        Locate a region in an image
+  ask        Ask named questions from a JSON file
+  run        Evaluate a complete JSON request
+  mcp        Expose a configured provider through STDIO MCP
+  skill      Print or export the companion Agent Skill; no API access
+  plugin     Export a Codex plugin and local marketplace; no API access
+  providers  Manage trusted executable providers
+  help       Print this message or the help of the given subcommand(s)
 
-decision plugin
-  -h, --help: show this help message and exit
-  --output OUTPUT: Required. Directory receiving the generated marketplace and plugins/decision package
-  --integration INTEGRATION: Use installed CLI commands or bundle a STDIO MCP declaration (default: mcp)
-  --mcp-command MCP_COMMAND: MCP executable name or absolute path, without arguments (default: decision on PATH)
-  --env-var NAME: Additional environment variable name to forward to MCP; repeat for custom provider keys
-  --check: Verify the generated plugin matches this tool and integration options
+Options:
+      --json
+          Print evaluation or request preview as JSON
 
-decision noul
-  -h, --help: show this help message and exit
-  question: Required.
-  --state STATE: Literal text context
-  --state-file STATE_FILE: JSON state file; - reads stdin
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+  -h, --help
+          Print help
 
-decision choice
-  -h, --help: show this help message and exit
-  question: Required.
-  --state STATE: Literal text context
-  --state-file STATE_FILE: JSON state file; - reads stdin
-  --option OPTION: Required. NAME=description; repeat
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+  -V, --version
+          Print version
 
-decision score
-  -h, --help: show this help message and exit
-  question: Required.
-  --state STATE: Literal text context
-  --state-file STATE_FILE: JSON state file; - reads stdin
-  --level LEVEL: Required. Ordered level; repeat
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+Ask a yes/no probability question
 
-decision box
-  -h, --help: show this help message and exit
-  question: Required.
-  --state STATE: Literal text context
-  --state-file STATE_FILE: JSON state file; - reads stdin
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+Usage: decision noul [OPTIONS] <question>
 
-decision ask
-  -h, --help: show this help message and exit
-  --state STATE: Literal text context
-  --state-file STATE_FILE: JSON state file; - reads stdin
-  --questions-file QUESTIONS_FILE: Required. JSON object of named questions; - reads stdin
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+Arguments:
+  <question>
+          Instructions for the typed question
 
-decision run
-  -h, --help: show this help message and exit
-  request_file: Required. JSON object with shared state and named questions; - reads stdin
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
-  --image [NAME=]PATH: Attach a PNG/JPEG under state.images; repeat for multiple images
-  --json: Print evaluation or request preview as JSON
-  --dry-run: Preview the validated request without contacting a provider
+Options:
+      --json
+          Print evaluation or request preview as JSON
 
-decision mcp
-  -h, --help: show this help message and exit
-  --model MODEL:
-  --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
-  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
-  --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
-  --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
-  --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
-  --timeout TIMEOUT:
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --state <state>
+          Literal text context
+
+      --state-file <state-file>
+          JSON state file; - reads stdin
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Choose among named options
+
+Usage: decision choice [OPTIONS] --option <option> <question>
+
+Arguments:
+  <question>
+          Instructions for the typed question
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --state <state>
+          Literal text context
+
+      --state-file <state-file>
+          JSON state file; - reads stdin
+
+      --option <option>
+          Unique NAME=description; repeat
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Score against ordered levels
+
+Usage: decision score [OPTIONS] --level <level> <question>
+
+Arguments:
+  <question>
+          Instructions for the typed question
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --state <state>
+          Literal text context
+
+      --state-file <state-file>
+          JSON state file; - reads stdin
+
+      --level <level>
+          Ordered score level; repeat
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Locate a region in an image
+
+Usage: decision box [OPTIONS] <question>
+
+Arguments:
+  <question>
+          Instructions for the typed question
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --state <state>
+          Literal text context
+
+      --state-file <state-file>
+          JSON state file; - reads stdin
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Ask named questions from a JSON file
+
+Usage: decision ask [OPTIONS] --questions-file <questions-file>
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --state <state>
+          Literal text context
+
+      --state-file <state-file>
+          JSON state file; - reads stdin
+
+      --questions-file <questions-file>
+          JSON object of named questions; - reads stdin
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Evaluate a complete JSON request
+
+Usage: decision run [OPTIONS] <request-file>
+
+Arguments:
+  <request-file>
+          JSON request file; - reads stdin
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --dry-run
+          Preview the validated request without contacting a provider
+
+      --image <image>
+          Attach PNG/JPEG as [NAME=]PATH; repeat
+
+  -h, --help
+          Print help
+
+Expose a configured provider through STDIO MCP
+
+Usage: decision mcp [OPTIONS]
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+      --provider <provider>
+          Built-in typesafe, openai, cloudflare, gemini, or installed provider
+
+      --model <model>
+          Model override (default: DECISION_MODEL)
+
+      --base-url <base-url>
+          Provider API base URL (default: DECISION_BASE_URL or provider environment)
+
+      --api-key-env <api-key-env>
+          Environment variable holding the provider key
+
+      --account-id <account-id>
+          Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
+
+      --timeout <timeout>
+          Finite positive timeout in seconds
+
+          [default: 30]
+
+      --disable-provider <disable-provider>
+          Disable a provider without loading it; repeat
+
+      --management
+          Expose provider install/list/remove without inference
+
+  -h, --help
+          Print help
+
+Print or export the companion Agent Skill; no API access
+
+Usage: decision skill [OPTIONS]
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --output <output>
+          Write SKILL.md and references into this directory
+
+      --check
+          Verify an exported skill matches this tool
+
+  -h, --help
+          Print help
+
+Export a Codex plugin and local marketplace; no API access
+
+Usage: decision plugin [OPTIONS] --output <output>
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --output <output>
+          Generated marketplace directory
+
+      --integration <integration>
+          Integration mode
+
+          [default: mcp]
+          [possible values: cli, mcp]
+
+      --mcp-command <mcp-command>
+          MCP executable name or absolute path, without arguments
+
+          [default: decision]
+
+      --env-var <env-var>
+          Additional environment variable name to forward; repeat
+
+      --check
+          Verify generated plugin contents
+
+  -h, --help
+          Print help
+
+Manage trusted executable providers
+
+Usage: decision providers [OPTIONS] <COMMAND>
+
+Commands:
+  install  Install or update a trusted provider package
+  list     List registered provider versions
+  remove   Unregister a provider while retaining pinned artifacts
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+  -h, --help
+          Print help
+
+Install or update a trusted provider package
+
+Usage: decision providers install [OPTIONS] <source>
+
+Arguments:
+  <source>
+          Local package, checksum-verified archive, or pinned Git source
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --sha256 <sha256>
+          Required archive SHA-256
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+  -h, --help
+          Print help
+
+List registered provider versions
+
+Usage: decision providers list [OPTIONS]
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+  -h, --help
+          Print help
+
+Unregister a provider while retaining pinned artifacts
+
+Usage: decision providers remove [OPTIONS] <name>
+
+Arguments:
+  <name>
+          Registered provider name
+
+Options:
+      --json
+          Print evaluation or request preview as JSON
+
+      --plugin-home <plugin-home>
+          Personal provider installation directory
+
+      --project-config <project-config>
+          Explicit project provider registry file
+
+  -h, --help
+          Print help

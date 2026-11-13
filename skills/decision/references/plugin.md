@@ -2,9 +2,9 @@
 
 Export either CLI or MCP integration, then install it explicitly on a local
 Codex host. Both modes contain the complete generated decision skill, schemas,
-and examples. Install decision separately using `uv tool install /path/to/decision`
-or a native standalone executable. The generated plugin does not bundle Python,
-dependencies, credentials, or a binary.
+and examples. Install the native decision executable separately for your operating
+system and architecture. The generated plugin does not bundle dependencies,
+credentials, or a binary. Neither the native host nor the export requires an interpreter.
 
 ## Choose the integration
 
@@ -54,13 +54,22 @@ select one output on each host. If changing the source directory, remove the old
 marketplace with `codex plugin marketplace remove decision-local` before adding
 the new one.
 
-Configure `DECISION_PROVIDER` (`typesafe`, `openai`, `cloudflare`, or `gemini`),
+Configure `DECISION_PROVIDER` (`typesafe`, `openai`, `cloudflare`, `gemini`, or an installed provider command),
 `DECISION_MODEL`, `DECISION_BASE_URL`, and `DECISION_API_KEY_ENV` in Codex's
 process environment. Matching official provider hosts accept their standard
 credential variables too. Cloudflare requires `CLOUDFLARE_ACCOUNT_ID` at its
 default API root. Restart Codex after changing its environment. Env files are
 not loaded automatically. Refer to the bundled skill for provider limits and
 credential routing.
+
+Codex-plugin export and runtime-provider installation are separate operations.
+For an external provider, explicitly install its package with
+`decision providers install SOURCE` on the same host before launching inference.
+The package author supplies its command and optional setup; the user supplies
+any required runtime. Export never fetches or executes those packages. The
+generated MCP declaration starts inference mode with only `evaluate`; it does
+not enable management tools. Read the skill's `references/providers.md` for
+provider scope, updates, and an explicitly configured management server.
 
 ## Refresh and verify
 

@@ -1,33 +1,62 @@
-"""Deterministic CLI/MCP plugin exports and safe regeneration."""
+"""Black-box deterministic native CLI/MCP exports and safe regeneration."""
 
-from contextlib import redirect_stderr
-import io
+import hashlib
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 
-from decision_cli import cli
-from decision_cli.plugin import CATALOG, MANIFEST, MCP, PACKAGE, export_plugin, plugin_files
-from decision_cli.skill import skill_files
+from native import invoke, response_server
+
+PACKAGE = Path("plugins/decision")
+MANIFEST = PACKAGE / ".codex-plugin/plugin.json"
+MCP = PACKAGE / ".mcp.json"
+CATALOG = Path(".agents/plugins/marketplace.json")
 
 
 class PluginTests(unittest.TestCase):
-    def files(self, integration="mcp", command="decision", env_vars=()):
-        return plugin_files(skill_files(cli.parser(), cli.VERSION, cli.request_schema()),
-                            cli.VERSION, integration, command, env_vars)
+    def args(self, output, integration="mcp", command="decision", env_vars=()):
+        result = ["plugin", "--output", str(output), "--integration", integration]
+        if command != "decision":
+            result += ["--mcp-command", command]
+        for name in env_vars:
+            result += ["--env-var", name]
+        return result
+
+    def export(self, output, integration="mcp", command="decision", env_vars=(), check=False, env=None):
+        result = invoke(*self.args(output, integration, command, env_vars), *(["--check"] if check else []), env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def files(self, integration="mcp", command="decision", env_vars=(), env=None):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.export(root, integration, command, env_vars, env=env)
+            return {p.relative_to(root): p.read_text(encoding="utf-8") for p in root.rglob("*") if p.is_file()}
+
+    def cache_version(self, files):
+        manifest = json.loads(files[MANIFEST])
+        version = manifest.pop("version").split("+", 1)[0]
+        digest = hashlib.sha256((json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode())
+        for name, content in sorted(files.items(), key=lambda item: item[0].as_posix()):
+            if name in {MANIFEST, CATALOG, Path("README.md")}:
+                continue
+            digest.update(name.as_posix().encode() + b"\0" + content.encode())
+        return version + "+" + digest.hexdigest()[:16]
 
     def test_modes_bundle_complete_skill_and_declare_only_selected_interface(self):
-        skill = skill_files(cli.parser(), cli.VERSION, cli.request_schema())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = invoke("skill", "--output", root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            skill = {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
         for mode in ("cli", "mcp"):
             files = self.files(mode)
             manifest = json.loads(files[MANIFEST])
             self.assertEqual(manifest["skills"], "./skills/decision")
-            self.assertEqual(manifest["requires_local_executor"], True)
-            self.assertEqual(set(p.relative_to(PACKAGE / "skills/decision").as_posix()
-                                 for p in files if p.is_relative_to(PACKAGE / "skills/decision")), set(skill))
+            self.assertIs(manifest["requires_local_executor"], True)
+            self.assertEqual({p.relative_to(PACKAGE / "skills/decision") for p in files
+                              if p.is_relative_to(PACKAGE / "skills/decision")}, skill)
             self.assertIn(f"This plugin uses {mode.upper()} integration.", files[PACKAGE / "skills/decision/SKILL.md"])
             if mode == "mcp":
                 self.assertEqual(manifest["mcpServers"], "./.mcp.json")
@@ -41,28 +70,34 @@ class PluginTests(unittest.TestCase):
 
     def test_export_ignores_environment_and_never_reads_or_embeds_credentials(self):
         expected = self.files()
-        with patch.dict(os.environ, {"DECISION_PROVIDER": "invalid-provider", "DECISION_BASE_URL": "invalid-url",
-                                     "DECISION_MODEL": "private-model", "DECISION_API_KEY_ENV": "PRIVATE_KEY",
-                                     "PRIVATE_KEY": "never-export-this-value", "CLOUDFLARE_ACCOUNT_ID": "private-account",
-                                     "GEMINI_API_KEY": "never-export-gemini-key"}), \
-                patch.object(cli, "connection", side_effect=AssertionError("no credentials")), \
-                patch.object(cli, "evaluate_request", side_effect=AssertionError("no inference")):
-            self.assertEqual(self.files(), expected)
-            with tempfile.TemporaryDirectory() as directory:
-                self.assertEqual(cli.main(["plugin", "--output", directory]), 0)
-                self.assertEqual(cli.main(["plugin", "--output", directory, "--check"]), 0)
-                output = "".join(p.read_text() for p in Path(directory).rglob("*") if p.is_file())
-                for value in ("invalid-provider", "invalid-url", "private-model", "never-export-this-value", "private-account", "never-export-gemini-key"):
-                    self.assertNotIn(value, output)
+        settings = {"DECISION_PROVIDER": "invalid-provider", "DECISION_BASE_URL": "invalid-url",
+                    "DECISION_MODEL": "private-model", "DECISION_API_KEY_ENV": "PRIVATE_KEY",
+                    "PRIVATE_KEY": "never-export-this-value", "CLOUDFLARE_ACCOUNT_ID": "private-account",
+                    "GEMINI_API_KEY": "never-export-gemini-key"}
+        self.assertEqual(self.files(env=settings), expected)
+        with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
+            root = Path(directory)
+            self.export(root, env=settings)
+            self.export(root, check=True, env=settings)
+            output = "".join(p.read_text(encoding="utf-8") for p in root.rglob("*") if p.is_file())
+            for value in settings.values():
+                self.assertNotIn(value, output)
+            self.export(root, env={"DECISION_BASE_URL": url, "DECISION_API_KEY": "fixture-key"})
+            self.assertEqual(requests, [])
 
     def test_cache_versions_track_mode_launch_configuration_and_skill_content(self):
-        original = json.loads(self.files()[MANIFEST])["version"]
-        variants = [self.files("cli"), self.files(command="/opt/decision"), self.files(env_vars=["CUSTOM_KEY"])]
-        altered_skill = skill_files(cli.parser(), cli.VERSION, cli.request_schema())
-        altered_skill["references/examples.md"] += "\nChanged example.\n"
-        variants.append(plugin_files(altered_skill, cli.VERSION))
-        for files in variants:
+        original_files = self.files()
+        original = json.loads(original_files[MANIFEST])["version"]
+        self.assertEqual(original, self.cache_version(original_files))
+        absolute = str(Path(tempfile.gettempdir()).resolve() / "decision with spaces")
+        for files in (self.files("cli"), self.files(command=absolute), self.files(env_vars=["CUSTOM_KEY"])):
             self.assertNotEqual(json.loads(files[MANIFEST])["version"], original)
+            self.assertEqual(json.loads(files[MANIFEST])["version"], self.cache_version(files))
+        # The native unit test mutates the generator's skill input. This checks
+        # the published version against actual export bytes without a test hook.
+        altered = dict(original_files)
+        altered[PACKAGE / "skills/decision/references/examples.md"] += "\nChanged example.\n"
+        self.assertNotEqual(self.cache_version(altered), original)
         self.assertEqual(self.files(env_vars=["CUSTOM_KEY", "CUSTOM_KEY"]), self.files(env_vars=["CUSTOM_KEY"]))
 
     def test_colliding_unmanaged_files_are_preserved(self):
@@ -71,29 +106,33 @@ class PluginTests(unittest.TestCase):
                 root = Path(directory)
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("User-owned content\n")
-                with self.assertRaisesRegex(ValueError, "unmanaged"):
-                    export_plugin(self.files(), root)
-                self.assertEqual(target.read_text(), "User-owned content\n")
+                target.write_text("User-owned content\n", encoding="utf-8")
+                result = invoke(*self.args(root))
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("unmanaged", result.stderr)
+                self.assertEqual(target.read_text(encoding="utf-8"), "User-owned content\n")
                 self.assertEqual({p.relative_to(root) for p in root.rglob("*") if p.is_file()}, {path})
 
     def test_switching_modes_removes_stale_mcp_and_checks_detect_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            export_plugin(self.files(), root)
-            export_plugin(self.files(), root, check=True)
-            export_plugin(self.files("cli"), root)
+            self.export(root)
+            self.export(root, check=True)
+            self.export(root, "cli")
             self.assertFalse((root / MCP).exists())
-            export_plugin(self.files("cli"), root, check=True)
-            with self.assertRaisesRegex(ValueError, "stale"):
-                export_plugin(self.files(), root, check=True)
-            (root / MANIFEST).write_text("{}\n")
-            with self.assertRaisesRegex(ValueError, "stale"):
-                export_plugin(self.files("cli"), root, check=True)
-            (root / "private.txt").write_text("User-owned data")
-            with self.assertRaisesRegex(ValueError, "unmanaged"):
-                export_plugin(self.files(), root)
-            self.assertEqual((root / "private.txt").read_text(), "User-owned data")
+            self.export(root, "cli", check=True)
+            result = invoke(*self.args(root), "--check")
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("stale", result.stderr)
+            (root / MANIFEST).write_text("{}\n", encoding="utf-8")
+            result = invoke(*self.args(root, "cli"), "--check")
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("stale", result.stderr)
+            (root / "private.txt").write_text("User-owned data", encoding="utf-8")
+            result = invoke(*self.args(root))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("unmanaged", result.stderr)
+            self.assertEqual((root / "private.txt").read_text(encoding="utf-8"), "User-owned data")
 
     def test_symlink_output_is_rejected_without_touching_target(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -102,25 +141,29 @@ class PluginTests(unittest.TestCase):
             target.mkdir()
             link = root / "link"
             link.symlink_to(target, target_is_directory=True)
-            with self.assertRaisesRegex(ValueError, "symlink"):
-                export_plugin(self.files(), link)
+            result = invoke(*self.args(link))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("symlink", result.stderr)
             output = root / "output"
             output.mkdir()
             (output / "plugins").symlink_to(target, target_is_directory=True)
-            with self.assertRaisesRegex(ValueError, "symlink"):
-                export_plugin(self.files(), output)
+            result = invoke(*self.args(output))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("symlink", result.stderr)
             self.assertEqual(list(target.iterdir()), [])
 
     def test_invalid_mcp_configuration_is_rejected_before_export(self):
-        for kwargs in ({"integration": "other"}, {"integration": "cli", "env_vars": ["CUSTOM_KEY"]},
-                       {"integration": "cli", "command": "/opt/decision"}, {"command": ""}, {"command": "decision\nother"},
-                       {"command": "./decision"}, {"command": "python -m decision_cli.cli"},
-                       {"env_vars": ["KEY=secret"]}, {"env_vars": ["bad-name"]}):
-            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                self.files(**kwargs)
-        with tempfile.TemporaryDirectory() as directory, redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.main(["plugin", "--output", directory, "--env-var", "KEY=secret"]), 2)
-            self.assertEqual(list(Path(directory).iterdir()), [])
+        absolute = str(Path(tempfile.gettempdir()).resolve() / "decision")
+        for flags in (("--integration", "other"), ("--integration", "cli", "--env-var", "CUSTOM_KEY"),
+                      ("--integration", "cli", "--mcp-command", absolute), ("--mcp-command", ""),
+                      ("--mcp-command", "decision\nother"), ("--mcp-command", "./decision"),
+                      ("--mcp-command", "python -m provider"), ("--env-var", "KEY=secret"),
+                      ("--env-var", "bad-name")):
+            with self.subTest(flags=flags), tempfile.TemporaryDirectory() as directory:
+                result = invoke("plugin", "--output", directory, *flags)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(list(Path(directory).iterdir()), [])
+                self.assertNotIn("KEY=secret", result.stderr)
 
 
 if __name__ == "__main__":
