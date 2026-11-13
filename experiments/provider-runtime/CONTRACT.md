@@ -1,7 +1,7 @@
 # Provider runtime prototype comparison
 
-This experiment compares a frozen Python host and a native Go host on the same
-provider workflow. It is not a replacement release. Production commands, generated
+This experiment compares frozen Python, native Go and native Rust hosts on the
+same provider workflow. It is not a replacement release. Production commands, generated
 skills, dependencies and releases retain their existing behavior.
 
 ## Product constraints
@@ -26,7 +26,12 @@ IDs/types, image references/limits, MCP base64-only inputs, HTTPS except loopbac
 no retries/redirects and safe errors. SDK-derived coercion must not weaken raw
 result checks. Preserve arbitrary JSON state, including integers above 2**53.
 Default provider is typesafe; environment provider/model/base URL/key overrides
-and `--disable-provider NAME` work. MCP tool arguments cannot change provider,
+and `--disable-provider NAME` work. Preserve the existing TypeSafe execution-model
+fallback. CLI precedence is CLI model, DECISION_MODEL, request model,
+TYPESAFE_DEFAULT_MODEL, then the pinned SDK's default jev-latest. MCP explicit
+tool-request models override server model defaults. SDK-only defaults need not
+enter dry-run JSON.
+MCP tool arguments cannot change provider,
 endpoint or credential selector. No live inference or real credentials.
 
 Other built-ins, generated skill/Codex plugin exports, Homebrew publication,

@@ -87,6 +87,28 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(requests[0]["body"]["state"]["large"], 9007199254740993)
         self.assertNotIn("duration_ms", requests[0]["body"])
 
+    def test_typesafe_model_environment_precedence(self):
+        payload = {key: value for key, value in REQUEST.items() if key != "model"}
+        for mode, expected in (("default", "jev-latest"), ("sdk", "sdk-custom"),
+                               ("decision", "decision-custom"), ("cli", "cli-custom"),
+                               ("request", "cli-custom"), ("request_only", "request-custom")):
+            with self.subTest(mode=mode), provider_server() as (url, requests):
+                env = environment()
+                env.pop("DECISION_MODEL")
+                current = deepcopy(payload)
+                extra = []
+                if mode != "default":
+                    env["TYPESAFE_DEFAULT_MODEL"] = "sdk-custom"
+                if mode in {"decision", "cli", "request"}:
+                    env["DECISION_MODEL"] = "decision-custom"
+                if mode in {"cli", "request"}:
+                    extra = ["--model", "cli-custom"]
+                if mode in {"request", "request_only"}:
+                    current["model"] = "request-custom"
+                result = self.run_payload(current, "typesafe", "--base-url", url, *extra, env=env)
+                self.assertEqual(json.loads(result.stdout)["model"], expected)
+                self.assertEqual(requests[-1]["body"]["model"], expected)
+
     def test_typesafe_cli_png_box_multipart(self):
         payload = image_request()
         with provider_server() as (url, requests):
