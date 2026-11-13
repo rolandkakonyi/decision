@@ -20,8 +20,8 @@ prose explanations or researched answers. Keep policy and actions in code.
 Run `decision --version` to confirm installation. This skill does not include
 the executable. Install it separately from the
 [decision repository](https://github.com/rolandkakonyi/decision) as a native
-executable for your operating system and architecture. Python and Go are not
-required by the host or by generated skill/Codex-plugin exports. See its
+executable for your operating system and architecture. The native host and
+generated skill/Codex-plugin exports require no interpreter. See its
 [build guide](https://github.com/rolandkakonyi/decision/blob/main/docs/standalone.md).
 Do not silently install or change the user's MCP settings as part of a query.
 To package this skill as a Codex plugin, use `decision plugin --output DIR`

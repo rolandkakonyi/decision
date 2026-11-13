@@ -4,7 +4,7 @@ Export either CLI or MCP integration, then install it explicitly on a local
 Codex host. Both modes contain the complete generated decision skill, schemas,
 and examples. Install the native decision executable separately for your operating
 system and architecture. The generated plugin does not bundle dependencies,
-credentials, or a binary, and neither the host nor the export requires Python or Go.
+credentials, or a binary. Neither the native host nor the export requires an interpreter.
 
 ## Choose the integration
 
