@@ -112,11 +112,12 @@ def assemble():
         (SOURCE / destination).write_text(rewrite(text, source, destination))
     for path in (ROOT / "docs/site").glob("*.md"):
         (SOURCE / path.name).write_text(rewrite(path.read_text(), f"docs/site/{path.name}", path.name))
-    help_text = (references / "cli-help.txt").read_text()
+    help_text = (references / "cli-help.txt").read_text().partition("\n")[2]
     commands = re.split(r"(?m)^(decision[^\n]*)$", help_text)[1:]
     content = "# Command reference\n\nGenerated from the running CLI's command definitions.\n"
     for command, flags in zip(commands[::2], commands[1::2]):
-        content += f"\n## `{command}`\n\n```text\n{flags.strip()}\n```\n"
+        flags = flags.strip("\n")
+        content += f"\n## `{command}`\n\n```text\n{flags}\n```\n"
     (SOURCE / "command-reference.md").write_text(content)
     schema = (references / "request-schema.json").read_text()
     (SOURCE / "schema.md").write_text(
