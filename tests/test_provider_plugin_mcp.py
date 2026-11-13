@@ -393,3 +393,19 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(len(artifacts), 1)
         self.assertFalse(any(path.name == "artifacts" for path in artifacts[0].rglob("*")))
 
+    @unittest.skipUnless(os.name == "posix", "SIGINT delivery requires Unix signals")
+    def test_interrupt_while_waiting_for_stdin_exits_without_eof(self):
+        for _ in range(3):
+            process = subprocess.Popen([BINARY, "run", "-", "--dry-run", "--json"],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       env=self.env)
+            try:
+                time.sleep(.2)
+                process.send_signal(signal.SIGINT)
+                self.assertEqual(process.wait(timeout=3), 130)
+                stdout, _ = process.communicate(timeout=3)
+                self.assertEqual(stdout, b"")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=3)

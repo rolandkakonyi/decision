@@ -154,7 +154,14 @@ async fn run(args: Vec<std::ffi::OsString>) -> Result<()> {
     if name == "mcp" {
         return mcp::serve(o, p).await;
     }
-    let (r, directory) = cli::make_request(name, m, &o)?;
+    let input_name = name.to_owned();
+    let input_matches = m.clone();
+    let input_options = o.clone();
+    let (r, directory) = tokio::task::spawn_blocking(move || {
+        cli::make_request(&input_name, &input_matches, &input_options)
+    })
+    .await
+    .map_err(|_| Error::Input)??;
     let result = timed(&o, provider::evaluate(&o, p.as_ref(), r, true, &directory)).await?;
     if cli::enabled(&matches, "json") {
         println!("{result}");
