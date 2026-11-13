@@ -1,7 +1,9 @@
 """Bounded Codex app-server client for isolated plugin discovery tests."""
 
 import json
+import os
 import queue
+import signal
 import subprocess
 import threading
 
@@ -12,7 +14,8 @@ class CodexClient:
 
     def __enter__(self):
         self.process = subprocess.Popen([self.executable, "app-server"], cwd=self.cwd, env=self.environment,
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                                        start_new_session=os.name == "posix")
         self.messages = queue.Queue()
         self.sequence = 0
         self.reader = threading.Thread(target=self.read, daemon=True)
@@ -54,12 +57,27 @@ class CodexClient:
                 return message["result"]
 
     def __exit__(self, *exc):
-        self.process.terminate()
+        if os.name == "posix":
+            self.signal_group(signal.SIGTERM)
+        else:
+            self.process.terminate()
         try:
             self.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait()
+            pass
+        finally:
+            # Git clones can outlive both the npm launcher and app-server.
+            if os.name == "posix":
+                self.signal_group(signal.SIGKILL)
+            elif self.process.poll() is None:
+                self.process.kill()
+            self.process.wait(timeout=10)
         self.reader.join(timeout=5)
         self.process.stdin.close()
         self.process.stdout.close()
+
+    def signal_group(self, sig):
+        try:
+            os.killpg(self.process.pid, sig)
+        except ProcessLookupError:
+            pass
