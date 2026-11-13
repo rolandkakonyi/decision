@@ -127,6 +127,10 @@ on each side and are never resized by this CLI. Check the
 ## Provider configuration
 
 - `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, `cloudflare`, `gemini`, or an installed provider extension.
+- Repeat `--disable-provider NAME` to exclude providers for this invocation.
+  A disabled selection, including via `DECISION_PROVIDER`, fails before loading
+  the provider or sending a request; there is no fallback. MCP exclusions are
+  fixed server startup flags, never tool arguments.
 - `--base-url` overrides `DECISION_BASE_URL`, then the selected provider's
   `TYPESAFE_BASE_URL`, `OPENAI_BASE_URL`, `CLOUDFLARE_BASE_URL`, or `GEMINI_BASE_URL`.
   Defaults are `https://api.typesafe.ai`, `https://api.openai.com/v1`,

@@ -26,6 +26,13 @@ selected entry point is loaded. Duplicate registrations for a selected name,
 an unsupported API version, or a mismatched `ProviderInfo.name` fail locally.
 An unselected broken extension does not affect built-ins or exports.
 
+Repeat `--disable-provider NAME` on query commands or `decision mcp` to exclude
+providers for that invocation. The check precedes entry-point discovery/import
+and applies to explicit and environment-based selection, including built-ins.
+Selecting a disabled name is an input error with no provider fallback.
+Exclusions do not modify installed packages. MCP exclusions are fixed at startup;
+individual tool calls cannot change them.
+
 ## Interface
 
 The `Provider` protocol has four synchronous methods:

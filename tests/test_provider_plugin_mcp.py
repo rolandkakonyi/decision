@@ -115,7 +115,7 @@ class ExternalProviderTransportTests(unittest.TestCase):
 
         async def check():
             cmd = command()
-            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp"], env=self.environment, cwd=working_directory())
+            parameters = StdioServerParameters(command=cmd[0], args=[*cmd[1:], "mcp", "--disable-provider", "broken"], env=self.environment, cwd=working_directory())
             async with stdio_client(parameters) as (read, write):
                 async with ClientSession(read, write, read_timeout_seconds=30) as session:
                     await session.initialize()
@@ -128,7 +128,7 @@ class ExternalProviderTransportTests(unittest.TestCase):
                     self.assertFalse(result.is_error, result.content)
                     self.assertEqual(result.structured_content["model"], "per-call")
                     validate(result.structured_content, tool.output_schema)
-                    for field in ("provider", "base_url", "api_key_env", "account_id"):
+                    for field in ("provider", "base_url", "api_key_env", "account_id", "disable_provider"):
                         invalid = {**REQUEST, field: "override"}
                         with self.assertRaises(ValidationError):
                             validate(invalid, tool.input_schema)
@@ -148,6 +148,16 @@ class ExternalProviderTransportTests(unittest.TestCase):
                     self.assertTrue(all(path == "/api/evaluate" and key == "Bearer fixture-secret" for path, key, _ in self.requests))
 
         asyncio.run(check())
+
+    def test_disabled_installed_plugin_rejects_cli_and_mcp_before_network(self):
+        for args in (("run", "-", "--json"), ("run", "-", "--dry-run", "--json"), ("mcp",)):
+            result = self.run_cli(*args, "--disable-provider", "fixture", payload=REQUEST)
+            self.assertEqual((result.returncode, result.stdout), (2, ""))
+            self.assertIn("disabled for this invocation", result.stderr)
+        self.assertEqual(self.requests, [])
+        result = self.run_cli("run", "-", "--disable-provider", "broken", "--disable-provider", "other", "--json", payload=REQUEST)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.requests), 1)
 
 
 if __name__ == "__main__":

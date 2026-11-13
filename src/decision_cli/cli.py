@@ -54,6 +54,8 @@ def parser():
         sub.add_argument("--model", default=os.getenv("DECISION_MODEL"))
         sub.add_argument("--provider", default=os.getenv("DECISION_PROVIDER", "typesafe"), metavar="NAME",
                          help="Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)")
+        sub.add_argument("--disable-provider", action="append", default=[], metavar="NAME",
+                         help="Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back")
         sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL"),
                          help="API base URL; defaults to the selected provider's URL or provider-specific environment setting")
         sub.add_argument("--api-key-env", default=os.getenv("DECISION_API_KEY_ENV"),
@@ -149,6 +151,8 @@ def make_request(args):
 
 
 def selected_provider(args):
+    if args.provider in args.disable_provider:
+        raise ValueError("Selected provider is disabled for this invocation; choose another --provider or remove its --disable-provider flag")
     from decision_cli.registry import load_provider
 
     provider = getattr(args, "_provider", None)

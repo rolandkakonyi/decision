@@ -71,6 +71,36 @@ class ProviderPluginTests(unittest.TestCase):
                 registry.load_provider("fixture")
             discover.assert_not_called()
 
+    def test_disabled_provider_fails_before_loading_for_flags_environment_and_mcp(self):
+        for command in (["noul", "True?", "--state", "x", "--provider", "fixture"],
+                        ["noul", "True?", "--state", "x", "--dry-run"],
+                        ["mcp", "--provider", "fixture"]):
+            with self.subTest(command=command), patch.dict(os.environ, {"DECISION_PROVIDER": "fixture"}), \
+                    patch.object(registry, "load_provider") as load, \
+                    redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()) as err:
+                code = cli.main([*command, "--disable-provider", "other", "--disable-provider", "fixture"])
+                self.assertEqual((code, out.getvalue()), (2, ""))
+                self.assertIn("disabled for this invocation", err.getvalue())
+                load.assert_not_called()
+        args = self.args()
+        with patch.object(registry, "load_provider", return_value=provider()) as load:
+            cli.selected_provider(args)
+            args.disable_provider.append("fixture")
+            with self.assertRaisesRegex(ValueError, "disabled for this invocation"):
+                cli.selected_provider(args)
+            self.assertEqual(load.call_count, 1)
+
+    def test_disabling_other_names_keeps_selected_builtin_and_extension_available(self):
+        for name in ("typesafe", "fixture"):
+            args = self.args("--provider", name, "--disable-provider", "other", "--disable-provider", "broken")
+            expected = registry.load_provider("typesafe") if name == "typesafe" else provider()
+            with patch.object(registry, "load_provider", return_value=expected):
+                self.assertIs(cli.selected_provider(args), expected)
+        args = self.args("--provider", "typesafe", "--disable-provider", "typesafe")
+        with patch.object(registry, "load_provider") as load, self.assertRaises(ValueError):
+            cli.selected_provider(args)
+        load.assert_not_called()
+
     def test_external_credentials_are_host_scoped_and_selector_is_exclusive(self):
         plugin = provider()
         with patch.object(registry, "load_provider", return_value=plugin), patch.dict(os.environ, {"FIXTURE_API_KEY": "fixture-key", "OPENAI_API_KEY": "other-key"}):

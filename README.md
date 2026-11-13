@@ -442,6 +442,18 @@ See [the provider API](docs/provider-plugins.md) for registration, interface,
 validation, and transport requirements. This extension mechanism is separate
 from the generated Codex plugin below.
 
+Use repeatable `--disable-provider NAME` flags to exclude installed or built-in
+providers for one invocation:
+
+```bash
+decision run request.json --provider acme --disable-provider other --disable-provider openai
+```
+
+Selecting a disabled provider, including through `DECISION_PROVIDER`, exits with
+an input error before loading it or sending a request. There is no fallback or
+persistent installation change. For MCP, exclusions are startup flags on
+`decision mcp`; tool arguments cannot change them.
+
 ## MCP in the same command
 
 ```bash

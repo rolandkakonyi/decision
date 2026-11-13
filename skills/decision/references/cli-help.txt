@@ -25,6 +25,7 @@ decision noul
   --state-file STATE_FILE: JSON state file; - reads stdin
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -41,6 +42,7 @@ decision choice
   --option OPTION: Required. NAME=description; repeat
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -57,6 +59,7 @@ decision score
   --level LEVEL: Required. Ordered level; repeat
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -72,6 +75,7 @@ decision box
   --state-file STATE_FILE: JSON state file; - reads stdin
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -87,6 +91,7 @@ decision ask
   --questions-file QUESTIONS_FILE: Required. JSON object of named questions; - reads stdin
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -100,6 +105,7 @@ decision run
   request_file: Required. JSON object with shared state and named questions; - reads stdin
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
@@ -112,6 +118,7 @@ decision mcp
   -h, --help: show this help message and exit
   --model MODEL:
   --provider NAME: Built-in typesafe, openai, cloudflare, gemini, or installed provider plugin (default: DECISION_PROVIDER or typesafe)
+  --disable-provider NAME: Disable a provider for this invocation; repeat for multiple names. Selecting a disabled provider fails without loading it or falling back
   --base-url BASE_URL: API base URL; defaults to the selected provider's URL or provider-specific environment setting
   --api-key-env API_KEY_ENV: Environment variable holding the provider key (default: DECISION_API_KEY_ENV)
   --account-id ACCOUNT_ID: Cloudflare account ID (default: DECISION_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID)
