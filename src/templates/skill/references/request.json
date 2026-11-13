@@ -1,0 +1,28 @@
+{
+  "state": {
+    "message": "I was charged twice. Please refund the extra payment."
+  },
+  "questions": {
+    "refund": {
+      "type": "noul",
+      "instructions": "Does the customer request a refund?"
+    },
+    "team": {
+      "type": "choice",
+      "instructions": "Which team handles this message?",
+      "criteria": {
+        "billing": "Payments and refunds",
+        "technical": "Bugs and integrations"
+      }
+    },
+    "blocking": {
+      "type": "score",
+      "instructions": "How much does the problem block the customer?",
+      "criteria": [
+        "Can continue normally",
+        "Can continue with inconvenience",
+        "Cannot continue"
+      ]
+    }
+  }
+}
