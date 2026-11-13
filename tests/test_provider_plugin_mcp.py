@@ -355,3 +355,32 @@ class Acceptance(unittest.TestCase):
             client.notify("notifications/cancelled", {"requestId": identifier, "reason": "fixture cancellation"})
             self.assert_processes_stop(pids)
             client.request("ping", {})
+
+    @unittest.skipUnless(os.name == "posix", "SIGINT delivery requires Unix signals")
+    def test_cli_interrupt_keeps_exit_status_and_reaps_plugin_tree(self):
+        self.install()
+        payload = {**REQUEST, "state": {"fixture_mode": "hang"}}
+        process = subprocess.Popen([BINARY, "run", "-", "--json", "--provider", "fixture",
+                                    "--plugin-home", str(self.home), "--timeout", "20"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, env=self.env)
+        try:
+            process.stdin.write(json.dumps(payload))
+            process.stdin.close()
+            process.stdin = None
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not any("child_pid" in item for item in self.records()):
+                time.sleep(.02)
+            records = self.records()
+            pids = [item["pid"] for item in records if item.get("method") == "evaluate"]
+            pids += [item["child_pid"] for item in records if "child_pid" in item]
+            self.assertGreaterEqual(len(pids), 2)
+            process.send_signal(signal.SIGINT)
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 130, stderr)
+            self.assertEqual(stdout, "")
+            self.assert_processes_stop(pids)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)

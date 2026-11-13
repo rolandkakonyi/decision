@@ -17,6 +17,7 @@ pub enum Error {
     Data,
     Provider,
     Disabled,
+    Interrupted,
     InputMessage(String),
     ExecutionMessage(String),
 }
@@ -28,6 +29,9 @@ impl Error {
         Self::ExecutionMessage(message.into())
     }
     pub fn exit_code(&self) -> i32 {
+        if matches!(self, Self::Interrupted) {
+            return 130;
+        }
         if matches!(self, Self::Input | Self::Disabled | Self::InputMessage(_)) {
             2
         } else {
@@ -38,6 +42,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
+            Self::Interrupted => "Interrupted",
             Self::Input => "Invalid request or JSON input",
             Self::Data => "Provider returned invalid decision data; no answers returned",
             Self::Provider => "Provider operation failed; no answers returned",
@@ -176,7 +181,7 @@ async fn termination() {
 }
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let result = tokio::select! {r=run(env::args_os().skip(1).collect())=>r,_=tokio::signal::ctrl_c()=>Err(Error::Provider),_=termination()=>Err(Error::Provider)};
+    let result = tokio::select! {r=run(env::args_os().skip(1).collect())=>r,_=tokio::signal::ctrl_c()=>Err(Error::Interrupted),_=termination()=>Err(Error::Provider)};
     process::drain().await;
     if let Err(e) = result {
         eprintln!("decision: {e}");
