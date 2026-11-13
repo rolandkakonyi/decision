@@ -38,7 +38,8 @@ class DocumentedExamplesTests(unittest.TestCase):
             for name in ("dog-request.json", "dog-questions.json",
                          "dog-mixed-request.json", "dog-mixed-questions.json",
                          "openai-dog-request.json", "openai-dog-questions.json",
-                         "cloudflare-dog-request.json", "cloudflare-dog-questions.json"):
+                         "cloudflare-dog-request.json", "cloudflare-dog-questions.json",
+                         "gemini-dog-request.json", "gemini-dog-questions.json"):
                 shutil.copyfile(REFERENCES / name, root / name)
             with chdir(root), patch.object(cli, "evaluate_request", side_effect=AssertionError("Examples must never call a provider")):
                 for command in commands:

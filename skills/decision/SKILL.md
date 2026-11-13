@@ -1,6 +1,6 @@
 ---
 name: decision
-description: "Ask Jev, OpenAI Decisions, Cloudflare Clef, or a compatible provider multiple typed questions about shared text and images using decision CLI or MCP; classify choices, assess claims, or score rubrics."
+description: "Ask Jev, OpenAI/Gemini Decisions, Cloudflare Clef, or compatible providers typed questions over shared text and images via decision CLI or MCP."
 ---
 
 # Decision
@@ -11,7 +11,7 @@ Use the installed `decision` command or its MCP `evaluate` tool for typed
 judgments over explicitly selected context. A Noul returns a yes probability;
 a Choice selects one named option with probabilities; a Score evaluates ordered
 rubric levels. Box questions locate an object in an image with TypeSafe/Jev;
-OpenAI Decisions and Cloudflare Clef support Noul, Choice, and Score. The harness accepts
+OpenAI/Gemini Decisions and Cloudflare Clef support Noul, Choice, and Score. The harness accepts
 JSON state and PNG/JPEG images. It produces data rather than
 prose explanations or researched answers. Keep policy and actions in code.
 
@@ -126,20 +126,22 @@ on each side and are never resized by this CLI. Check the
 
 ## Provider configuration
 
-- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, or `cloudflare`.
+- `--provider` overrides `DECISION_PROVIDER`: `typesafe` (default), `openai`, `cloudflare`, or `gemini`.
 - `--base-url` overrides `DECISION_BASE_URL`, then the selected provider's
-  `TYPESAFE_BASE_URL`, `OPENAI_BASE_URL`, or `CLOUDFLARE_BASE_URL`. Defaults are
-  `https://api.typesafe.ai`, `https://api.openai.com/v1`, and
-  `https://api.cloudflare.com/client/v4`. Include a compatible host's API prefix.
+  `TYPESAFE_BASE_URL`, `OPENAI_BASE_URL`, `CLOUDFLARE_BASE_URL`, or `GEMINI_BASE_URL`.
+  Defaults are `https://api.typesafe.ai`, `https://api.openai.com/v1`,
+  `https://api.cloudflare.com/client/v4`, and
+  `https://generativelanguage.googleapis.com/v1beta`. Include the API prefix.
 - `--api-key-env MY_PROVIDER_KEY` overrides `DECISION_API_KEY_ENV`, selecting an
   environment variable by name. Without a selector, use `DECISION_API_KEY`.
 - Only the matching provider's official HTTPS host can fall back to
   `TYPESAFE_API_KEY` / `TYPESAFEAI_API_KEY`, `OPENAI_API_KEY`, or
-  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_AUTH_TOKEN`. Other hosts
+  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_AUTH_TOKEN`, or
+  `GEMINI_API_KEY` / `GOOGLE_API_KEY` (in that order). Other hosts
   require an explicitly selected provider key. Keys never cross providers implicitly.
 - `--model` overrides `DECISION_MODEL`, then the CLI request's model. Without a
   selected model, TypeSafe uses `TYPESAFE_DEFAULT_MODEL` or its SDK default,
-  while OpenAI uses `gpt-6-luna` and Cloudflare uses `clef`.
+  while OpenAI uses `gpt-6-luna`, Cloudflare uses `clef`, and Gemini uses `gemini-decision-1`.
   MCP per-call model overrides its server default.
 - Cloudflare's `--account-id` overrides `DECISION_ACCOUNT_ID`, then
   `CLOUDFLARE_ACCOUNT_ID`. The default API root requires an account ID;
@@ -193,6 +195,22 @@ Use `references/cloudflare-dog-questions.json` or
 `references/cloudflare-dog-request.json`; see the worked guide and
 [official Clef docs](https://developers.cloudflare.com/workers-ai/models/clef/).
 
+For Gemini, use `--provider gemini` with `GEMINI_API_KEY` exported. The default
+model is `gemini-decision-1`. JSON state is serialized as text; named PNG/JPEG
+images are sent once as inline base64 content blocks with reference labels.
+Common Noul criteria `true`/`false` map to `true_description`/`false_description`;
+structured descriptions become JSON text and absent Choice descriptions become
+empty strings. Limits are 1–1000 questions, IDs of 1–64 ASCII letters, digits,
+underscores, or hyphens, 2–255 choices, and 2–255 nonempty score levels.
+Option IDs allow 1–128 characters, internal ASCII spaces, and no edge spaces,
+control characters, or non-ASCII spaces. The harness retains its 16 MiB per-image
+and 32 MiB combined limits; Gemini enforces its context and media limits.
+Box is rejected locally. Audio, video, and PDFs are not accepted by this harness.
+Gemini usage is normalized to input/output tokens; zero output counts stay zero.
+Malformed, blocked, or incomplete batches return no judgments. Use
+`references/gemini-dog-questions.json` or `references/gemini-dog-request.json`;
+see the [official Decisions guide](https://aistudio.google.com/docs/decisions-api).
+
 ## MCP and code mode
 
 `decision mcp` serves one STDIO tool, `evaluate({state, questions, model?, assets?})`.
@@ -210,6 +228,7 @@ When setting up MCP explicitly:
 codex mcp add decision -- /absolute/path/to/decision mcp
 codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
 codex mcp add decision-cloudflare -- /absolute/path/to/decision mcp --provider cloudflare
+codex mcp add decision-gemini -- /absolute/path/to/decision mcp --provider gemini
 ```
 
 Forward both the selector and the selected credential variable, for example
@@ -238,6 +257,8 @@ already-sent provider request; its timeout still bounds it.
 - `references/openai-dog-questions.json`: those questions for OpenAI `ask --image`.
 - `references/cloudflare-dog-request.json`: mixed Noul, Choice, Score for Cloudflare Clef.
 - `references/cloudflare-dog-questions.json`: those questions for Cloudflare `ask --image`.
+- `references/gemini-dog-request.json`: mixed Noul, Choice, Score for Gemini Decisions.
+- `references/gemini-dog-questions.json`: those questions for Gemini `ask --image`.
 - [Official TypeSafe skill](https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md)
   and [TypeSafe docs](https://docs.typesafe.ai/) for question design and model limits.
 

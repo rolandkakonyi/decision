@@ -1,4 +1,4 @@
-"""Ask typed questions through TypeSafe, OpenAI Decisions, or Cloudflare Clef."""
+"""Ask typed questions through TypeSafe, OpenAI/Gemini Decisions, or Cloudflare Clef."""
 
 import argparse
 import asyncio
@@ -52,7 +52,7 @@ def parser():
         if name == "score":
             sub.add_argument("--level", action="append", required=True, help="Ordered level; repeat")
         sub.add_argument("--model", default=os.getenv("DECISION_MODEL"))
-        sub.add_argument("--provider", choices=("typesafe", "openai", "cloudflare"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
+        sub.add_argument("--provider", choices=("typesafe", "openai", "cloudflare", "gemini"), default=os.getenv("DECISION_PROVIDER", "typesafe"),
                          help="Wire API provider (default: DECISION_PROVIDER or typesafe)")
         sub.add_argument("--base-url", default=os.getenv("DECISION_BASE_URL"),
                          help="API base URL; defaults to the selected provider's URL or provider-specific environment setting")
@@ -162,17 +162,26 @@ def prepare_request(payload, args, *, allow_paths=False):
 
         payload["model"] = model_name(payload.get("model", DEFAULT_MODEL))
         validate_cloudflare(payload)
+    elif args.provider == "gemini":
+        from decision_cli.gemini_provider import DEFAULT_MODEL, validate_request as validate_gemini
+
+        payload.setdefault("model", DEFAULT_MODEL)
+        validate_gemini(payload)
     return payload
 
 
 def connection(args):
-    if args.provider not in {"typesafe", "openai", "cloudflare"}:
-        raise ValueError("Provider must be typesafe, openai, or cloudflare")
+    if args.provider not in {"typesafe", "openai", "cloudflare", "gemini"}:
+        raise ValueError("Provider must be typesafe, openai, cloudflare, or gemini")
     if not args.base_url:
         if args.provider == "openai":
             args.base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         elif args.provider == "cloudflare":
             args.base_url = os.getenv("CLOUDFLARE_BASE_URL") or "https://api.cloudflare.com/client/v4"
+        elif args.provider == "gemini":
+            from decision_cli.gemini_provider import API_ROOT
+
+            args.base_url = os.getenv("GEMINI_BASE_URL") or API_ROOT
         else:
             args.base_url = os.getenv("TYPESAFE_BASE_URL") or "https://api.typesafe.ai"
     url = urlsplit(args.base_url)
@@ -190,6 +199,8 @@ def connection(args):
             names += ["OPENAI_API_KEY"]
         elif args.provider == "cloudflare" and url.hostname == "api.cloudflare.com":
             names += ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"]
+        elif args.provider == "gemini" and url.hostname == "generativelanguage.googleapis.com":
+            names += ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
     key = next((os.environ[n].strip() for n in names if os.environ.get(n, "").strip()), None)
     return key
 
@@ -209,7 +220,7 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
     payload.pop("assets", None)
     key = validate_connection(args)
     if not key:
-        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY, OPENAI_API_KEY, or CLOUDFLARE_API_TOKEN / CLOUDFLARE_AUTH_TOKEN")
+        raise ValueError("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept TYPESAFE_API_KEY / TYPESAFEAI_API_KEY, OPENAI_API_KEY, CLOUDFLARE_API_TOKEN / CLOUDFLARE_AUTH_TOKEN, or GEMINI_API_KEY / GOOGLE_API_KEY")
     if args.provider == "cloudflare":
         from decision_cli.cloudflare_provider import endpoint, prepare_body
 
@@ -228,6 +239,10 @@ def evaluate_request(payload, args, *, allow_paths=False, image_data=None):
             from decision_cli.cloudflare_provider import evaluate
 
             result = evaluate(payload, cloudflare_body, args, key)
+        elif args.provider == "gemini":
+            from decision_cli.gemini_provider import evaluate
+
+            result = evaluate(payload, image_data, args, key)
         else:
             from typesafe_sdk import Image, RetryPolicy, TypeSafeClient
 
@@ -257,19 +272,23 @@ def request_schema(provider="typesafe"):
     """MCP input matches the batch JSON accepted by the CLI."""
     variants = []
     for kind in ("noul", "choice", "score", "box"):
-        if provider in {"openai", "cloudflare"} and kind == "box":
+        if provider in {"openai", "cloudflare", "gemini"} and kind == "box":
             continue
         fields = {"type": {"const": kind}, "instructions": {"type": "string", "minLength": 1}}
         required = ["type", "instructions"]
         if kind == "choice":
             fields["criteria"] = {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}}
-            if provider in {"openai", "cloudflare"}:
+            if provider in {"openai", "cloudflare", "gemini"}:
                 fields["criteria"].update(minProperties=2, maxProperties=255)
+            if provider == "gemini":
+                fields["criteria"]["propertyNames"]["maxLength"] = 128
             required.append("criteria")
         elif kind == "score":
             fields["criteria"] = {"type": "array", "minItems": 1}
-            if provider in {"openai", "cloudflare"}:
+            if provider in {"openai", "cloudflare", "gemini"}:
                 fields["criteria"].update(minItems=2, maxItems=10)
+            if provider == "gemini":
+                fields["criteria"]["maxItems"] = 255
             required.append("criteria")
         elif kind == "noul":
             fields["criteria"] = {"type": ["object", "null"], "properties": {"true": {}, "false": {}}, "additionalProperties": False}
@@ -295,6 +314,7 @@ def request_schema(provider="typesafe"):
             "questions": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1},
                           **({"maxProperties": 400} if provider == "openai" else {}),
                           **({"maxProperties": 64, "propertyNames": {"pattern": r"^[A-Za-z0-9_.-]{1,100}$"}} if provider == "cloudflare" else {}),
+                          **({"maxProperties": 1000, "propertyNames": {"pattern": r"^[A-Za-z0-9_-]{1,64}$"}} if provider == "gemini" else {}),
                           "description": "Named questions evaluated together in ONE provider request.",
                           "additionalProperties": {"oneOf": variants}},
             "model": model,

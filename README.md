@@ -4,7 +4,7 @@
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 
-One command for typed judgments from Jev, OpenAI Decisions, Cloudflare Clef, or compatible providers.
+One command for typed judgments from Jev, OpenAI/Gemini Decisions, Cloudflare Clef, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
 
@@ -135,7 +135,7 @@ question instructions, or criteria:
 Paths in request JSON files are relative to that file; flag paths and paths in
 stdin are relative to the working directory. Every asset must be referenced.
 Images are sent once per batch: TypeSafe uses multipart uploads; OpenAI and
-Cloudflare use base64 data URLs.
+Cloudflare use base64 data URLs; Gemini uses inline base64 content blocks.
 
 For MCP, replace path descriptors with `{"data_base64": "...", "format": "png"}`.
 MCP accepts base64 bytes only, never paths on the server's filesystem. Format is
@@ -237,7 +237,7 @@ breed. Add an `other` criterion when another breed or no dog is a valid outcome.
 
 Set `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` for the default TypeSafe host.
 Choose the wire API with `--provider typesafe` (the default),
-`--provider openai`, or `--provider cloudflare`, or set `DECISION_PROVIDER`. All providers use the same
+`--provider openai`, `--provider cloudflare`, or `--provider gemini`, or set `DECISION_PROVIDER`. All providers use the same
 question files and normalized answer format.
 
 Answers are validated against the request before any batch is returned.
@@ -294,6 +294,52 @@ The OpenAI base URL defaults to `https://api.openai.com/v1`, overridable via
 model is `gpt-6-luna` when no model is selected. `.env.local` is not loaded
 automatically; from a checkout, `uv run --env-file .env.local decision ...`
 loads the file explicitly without putting the key in command arguments.
+
+### Gemini Decisions
+
+Export `GEMINI_API_KEY` into the command's environment, then select Gemini:
+
+```bash
+decision noul 'Does this request a refund?' --state 'Please refund my order.' \
+  --provider gemini
+decision choice 'Which breed is the dog in images.dog?' \
+  --image dog=dog.jpg --provider gemini \
+  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
+```
+
+Noul, Choice, and Score use the shared question format and normalized answers.
+For mixed batches, copy
+[gemini-dog-questions.json](skills/decision/references/gemini-dog-questions.json)
+and pass it to `decision ask --questions-file gemini-dog-questions.json --image dog=dog.jpg --provider gemini --json`.
+Alternatively, copy
+[gemini-dog-request.json](skills/decision/references/gemini-dog-request.json)
+beside your `dog.jpg` and run `decision run gemini-dog-request.json --provider gemini --json`.
+
+The adapter sends one POST to `/v1beta/decisions` with the default model
+`gemini-decision-1`. It serializes JSON state as text, labels each named image,
+and sends its bytes once as an inline base64 content block. Common Noul criteria
+`true`/`false` become `true_description`/`false_description`. Structured criterion
+descriptions become JSON text; absent Choice descriptions become empty strings.
+Token counts map from Gemini's `total_input_tokens`/`total_output_tokens` into
+the common `usage` fields. A zero output count remains zero.
+
+Local checks enforce up to 1000 questions; IDs of 1–64 ASCII letters, digits,
+underscores, or hyphens; 2–255 Choice options; and 2–255 nonempty Score levels.
+Option IDs allow 1–128 characters with internal ASCII spaces, without edge
+spaces, control characters, or non-ASCII spaces. The harness accepts PNG/JPEG
+images up to 16 MiB each and 32 MiB combined; Gemini enforces its context and
+media limits. Box is rejected before network access. Audio, video, and PDFs
+are not accepted by the harness. Invalid, incomplete, or safety-blocked responses
+fail the entire batch without partial judgments, redirects, or retries. See the
+[official Decisions guide](https://aistudio.google.com/docs/decisions-api).
+
+The base URL defaults to `https://generativelanguage.googleapis.com/v1beta`,
+overridable via `--base-url`, `DECISION_BASE_URL`, or `GEMINI_BASE_URL`, in that
+order; the adapter appends `/decisions`. `--model` and `DECISION_MODEL` override
+the default model. At the official HTTPS host, `GEMINI_API_KEY` takes precedence
+over `GOOGLE_API_KEY`; `DECISION_API_KEY` takes precedence over both. An explicit
+`--api-key-env` / `DECISION_API_KEY_ENV` selects only that variable. Custom hosts
+require a selected credential variable or `DECISION_API_KEY`.
 
 ### Cloudflare Clef
 
@@ -374,6 +420,7 @@ or System One API; a chat-completions endpoint alone does not suffice.
 codex mcp add decision -- /absolute/path/to/decision mcp
 codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
 codex mcp add decision-cloudflare -- /absolute/path/to/decision mcp --provider cloudflare
+codex mcp add decision-gemini -- /absolute/path/to/decision mcp --provider gemini
 ```
 
 The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns structured
@@ -381,10 +428,11 @@ answers, model, usage, and `duration_ms` with an output schema. Forward the sele
 variable and its selector in Codex's MCP environment settings. Provider routing,
 account ID, key selection, and timeout are fixed server configuration; tool callers can
 override only the model. Stdout is reserved for protocol messages in MCP mode.
-OpenAI and Cloudflare servers advertise only Noul, Choice, and Score and their provider limits.
+OpenAI, Cloudflare, and Gemini servers advertise only Noul, Choice, and Score and their provider limits.
 Forward `OPENAI_API_KEY` for the official OpenAI host, or the selected credential
 variable and `DECISION_API_KEY_ENV` for another host.
 For Cloudflare, forward `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+For Gemini, forward `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for the official host.
 
 ## Generate a Codex plugin
 

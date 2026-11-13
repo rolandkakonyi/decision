@@ -65,7 +65,7 @@ DECISION_TEST_EXECUTABLE="$PWD/.state/decision-dist/decision" \
   uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
 ```
 
-These exercise TypeSafe, OpenAI, and Cloudflare transports, initialization, tool discovery, input/output schemas, batches of
+These exercise TypeSafe, OpenAI, Cloudflare, and Gemini transports, initialization, tool discovery, input/output schemas, batches of
 typed questions in one provider call, PNG multipart uploads for TypeSafe and inline images for OpenAI through CLI and MCP,
 human/JSON output with token usage and duration, custom provider credentials, and recovery from errors without
 inference. They also verify both plugin exports and a real MCP exchange launched
