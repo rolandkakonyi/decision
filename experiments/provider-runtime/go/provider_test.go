@@ -155,6 +155,9 @@ func TestModelOverrideContract(t *testing.T) {
 			t.Fatal(e)
 		}
 		want := "fixture"
+		if cli {
+			want = "launch-default"
+		}
 		if obj(result)["model"] != want {
 			t.Fatalf("cli=%v model=%v", cli, obj(result)["model"])
 		}
@@ -174,7 +177,9 @@ func TestTypeSafeSDKModelFallback(t *testing.T) {
 		{name: "blank sdk", sdkModel: " \t", want: "jev-latest"},
 		{name: "decision", sdkModel: "sdk-custom", decisionModel: "decision-custom", want: "decision-custom"},
 		{name: "cli", sdkModel: "sdk-custom", decisionModel: "decision-custom", cliModel: "cli-custom", want: "cli-custom"},
-		{name: "request", sdkModel: "sdk-custom", decisionModel: "decision-custom", cliModel: "cli-custom", requestModel: "request-custom", want: "request-custom"},
+		{name: "cli over request", sdkModel: "sdk-custom", decisionModel: "decision-custom", cliModel: "cli-custom", requestModel: "request-custom", want: "cli-custom"},
+		{name: "decision over request", sdkModel: "sdk-custom", decisionModel: "decision-custom", requestModel: "request-custom", want: "decision-custom"},
+		{name: "request over sdk", sdkModel: "sdk-custom", requestModel: "request-custom", want: "request-custom"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("TYPESAFE_DEFAULT_MODEL", test.sdkModel)
@@ -197,12 +202,11 @@ func TestTypeSafeSDKModelFallback(t *testing.T) {
 				w.Write(encoded(result))
 			}))
 			defer server.Close()
-			opts, pos, _, e := parseOptions(func() []string {
-				if test.cliModel != "" {
-					return []string{"--model", test.cliModel}
-				}
-				return nil
-			}())
+			var args []string
+			if test.cliModel != "" {
+				args = []string{"--model", test.cliModel}
+			}
+			opts, pos, _, e := parseOptions(args)
 			if e != nil || len(pos) != 0 {
 				t.Fatal(e)
 			}
