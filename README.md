@@ -3,35 +3,54 @@
 # decision
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/rolandkakonyi/decision)](https://github.com/rolandkakonyi/decision/releases/latest)
 
 One command for typed judgments from Jev, OpenAI/Gemini Decisions, Cloudflare Clef, or compatible providers.
 The same executable supports terminal commands, a STDIO MCP server, and
 generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
+Ask for a yes probability (Noul), named choices (Choice), ordered ratings (Score),
+or image bounding boxes (Box, TypeSafe only).
+
+## Install
 
 ```bash
-git clone https://github.com/rolandkakonyi/decision.git
-cd decision
-uv sync --locked
-uv run --locked decision run examples/request.json --dry-run
-uv run --locked decision mcp
-uv run --locked decision skill --output skills/decision
+brew install rolandkakonyi/tap/decision
 ```
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-Install on PATH from a [release tag](https://github.com/rolandkakonyi/decision/releases):
+The Homebrew package includes its Python runtime and supports macOS ARM64 and
+Linux x86_64. It includes all four built-in providers. Third-party provider
+extensions require the Python installation below. Upgrade with
+`brew upgrade rolandkakonyi/tap/decision`.
+
+For a Python installation, use Python 3.11+ and
+[uv](https://docs.astral.sh/uv/getting-started/installation/) to install a
+[release tag](https://github.com/rolandkakonyi/decision/releases):
 
 ```bash
 uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.9.0'
 ```
 
-Release assets also include an installable wheel and source distribution.
-To build a standalone executable, use [the build guide](docs/standalone.md).
+Release assets include an installable wheel, source distribution, and standalone
+archives with license notices. See [the build guide](docs/standalone.md) for
+native builds on other platforms.
 For a local install, use `uv tool install /path/to/decision`.
 The Python distribution is named `decision-harness`; the installed command is
 `decision`. Uninstall it with `uv tool uninstall decision-harness`.
 For development, `uv tool install --editable .` from the checkout keeps source
 edits live. After pulling changes, reinstall a non-editable local install
 with `uv tool install --force .`.
+
+## Quickstart
+
+Validate a request without credentials or inference:
+
+```bash
+decision noul 'Is this a greeting?' --state 'Hello' --dry-run
+```
+
+For live queries, configure your selected provider's API key and omit
+`--dry-run`. See [provider settings](#provider-settings) for credentials,
+default models, and supported question types. Inference is billed by the provider.
 
 ## Ask several questions together
 
@@ -541,6 +560,8 @@ that host separately.
 ## Development
 
 ```bash
+git clone https://github.com/rolandkakonyi/decision.git
+cd decision
 uv sync --locked --group build
 uv run --locked decision skill --output skills/decision --check
 uv run --locked python -m unittest discover -s tests -v
