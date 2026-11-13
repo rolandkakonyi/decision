@@ -1,6 +1,7 @@
 use crate::{
     Error, Options, Result,
     json::{FRAME_LIMIT, decode},
+    providers,
     store::Plugin,
     validation,
 };
@@ -51,10 +52,14 @@ pub fn configure(o: &mut Options, p: Option<&Plugin>) -> Result<()> {
     if o.base.is_empty() {
         o.base = match p {
             Some(p) => p.manifest.default_base_url.clone(),
-            None => env::var("TYPESAFE_BASE_URL")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "https://api.typesafe.ai".into()),
+            None => {
+                let info =
+                    providers::info(&o.provider).ok_or_else(|| Error::input("Unknown provider"))?;
+                env::var(info.base_url_env)
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| info.default_base_url.into())
+            }
         };
     }
     check_url(&o.base)?;
@@ -65,7 +70,11 @@ fn credential(o: &Options, p: Option<&Plugin>) -> Result<String> {
     if !o.key_env.is_empty() {
         names = vec![&o.key_env];
     } else {
-        let official = p.map_or("https://api.typesafe.ai", |p| &p.manifest.default_base_url);
+        let info = providers::info(&o.provider);
+        let official = match p {
+            Some(p) => p.manifest.default_base_url.as_str(),
+            None => info.as_ref().ok_or(Error::Input)?.default_base_url,
+        };
         let u = check_url(&o.base)?;
         let v = check_url(official)?;
         if u.scheme() == "https"
@@ -74,7 +83,7 @@ fn credential(o: &Options, p: Option<&Plugin>) -> Result<String> {
         {
             match p {
                 Some(p) => names.extend(p.manifest.credential_env_vars.iter().map(String::as_str)),
-                None => names.extend(["TYPESAFE_API_KEY", "TYPESAFEAI_API_KEY"]),
+                None => names.extend(info.as_ref().unwrap().credential_env_vars.iter().copied()),
             }
         }
     }
@@ -86,7 +95,7 @@ fn credential(o: &Options, p: Option<&Plugin>) -> Result<String> {
                 .filter(|s| !s.trim().is_empty())
                 .map(|s| s.trim().into())
         })
-        .ok_or(Error::Input)
+        .ok_or_else(|| Error::input("No provider key: set DECISION_API_KEY or select it with DECISION_API_KEY_ENV / --api-key-env; matching official provider hosts also accept their provider-specific credential variables"))
 }
 pub async fn evaluate(
     o: &Options,
@@ -95,13 +104,16 @@ pub async fn evaluate(
     paths: bool,
     directory: &Path,
 ) -> Result<Value> {
+    let preview_assets = r.get("assets").cloned();
     validation::request(&mut r, paths, directory)?;
     if !o.model.is_empty() && (paths || r.get("model").is_none()) {
         r["model"] = o.model.clone().into();
     } else if r.get("model").is_none()
-        && let Some(m) = p.and_then(|p| p.manifest.default_model.as_ref())
+        && let Some(m) = p
+            .and_then(|p| p.manifest.default_model.as_deref())
+            .or_else(|| providers::info(&o.provider).and_then(|i| i.default_model))
     {
-        r["model"] = m.clone().into();
+        r["model"] = m.into();
     }
     if let Some(p) = p {
         let mut prepared = p.call("prepare", Some(&r), None, "").await?;
@@ -113,19 +125,33 @@ pub async fn evaluate(
             return Err(Error::Provider);
         }
         r = prepared;
+    } else {
+        let state = r["state"].clone();
+        let questions = r["questions"].clone();
+        providers::prepare(&o.provider, &mut r)?;
+        if r["state"] != state || r["questions"] != questions {
+            return Err(Error::Provider);
+        }
     }
     if o.dry {
+        if let Some(assets) = preview_assets {
+            r["assets"] = assets;
+        }
         return Ok(r);
     }
     let key = credential(o, p)?;
+    if p.is_none() {
+        providers::validate_connection(&o.provider, &r, o)?;
+    }
     let start = Instant::now();
     let raw = match p {
-        None => typesafe(o, &r, &key).await?,
+        None if o.provider=="typesafe" => typesafe(o, &r, &key).await?,
+        None => providers::evaluate(&o.provider,&r,o,&key).await?,
         Some(p) => {
             p.call(
                 "evaluate",
                 Some(&r),
-                Some(json!({"base_url":o.base,"timeout":o.timeout,"account_id":null})),
+                Some(json!({"base_url":o.base,"timeout":o.timeout,"account_id":if o.account_id.is_empty() {Value::Null} else {o.account_id.clone().into()}})),
                 &key,
             )
             .await?
