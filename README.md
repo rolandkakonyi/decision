@@ -17,28 +17,21 @@ or image bounding boxes (Box, TypeSafe only).
 brew install rolandkakonyi/tap/decision
 ```
 
-The Homebrew package includes its Python runtime and supports macOS ARM64 and
-Linux x86_64. It includes all four built-in providers. Third-party provider
-extensions require the Python installation below. Upgrade with
+The executable includes all four built-in providers and supports executable
+provider plugins. It needs no Python or uv runtime. Upgrade with
 `brew upgrade rolandkakonyi/tap/decision`.
 
-For a Python installation, use Python 3.11+ and
-[uv](https://docs.astral.sh/uv/getting-started/installation/) to install a
-[release tag](https://github.com/rolandkakonyi/decision/releases):
+Native archives for macOS ARM64, Linux x86_64, and Windows x86_64 are available
+from [GitHub releases](https://github.com/rolandkakonyi/decision/releases).
+Extract the archive, verify its SHA-256 checksum, and place `decision`
+(`decision.exe` on Windows) on PATH. Keep the accompanying license notices.
+See [the build guide](docs/standalone.md) for platform constraints.
+
+With Rust installed, build and install from a checkout:
 
 ```bash
-uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.9.0'
+cargo install --locked --path .
 ```
-
-Release assets include an installable wheel, source distribution, and standalone
-archives with license notices. See [the build guide](docs/standalone.md) for
-native builds on other platforms.
-For a local install, use `uv tool install /path/to/decision`.
-The Python distribution is named `decision-harness`; the installed command is
-`decision`. Uninstall it with `uv tool uninstall decision-harness`.
-For development, `uv tool install --editable .` from the checkout keeps source
-edits live. After pulling changes, reinstall a non-editable local install
-with `uv tool install --force .`.
 
 ## Quickstart
 
@@ -92,7 +85,7 @@ model and answers:
 ```
 
 Stats cover the whole batch. `duration_ms` is measured with a monotonic clock
-around SDK setup, image upload, and provider response handling. Process startup
+around provider execution, image upload, and response handling. Process startup
 and local file validation are excluded. Token counts come from the provider;
 unreported counts are `null` in JSON/MCP and shown as unavailable in readable
 output. Zero counts remain zero. Dry runs preview a request without inference
@@ -292,7 +285,7 @@ beside your `dog.jpg`:
 decision run openai-dog-request.json --provider openai --model gpt-6-luna --json
 ```
 
-The adapter calls `POST /v1/decisions` through the official OpenAI SDK. It maps
+The adapter calls `POST /v1/decisions` directly over HTTPS. It maps
 Noul to `predicate`, named Choice criteria to `choices`, and ordered Score
 criteria to `levels`. Answers retain their question IDs and the usual
 `noul`/`choice`/`score` types. Objects and arrays of objects become `input_json`
@@ -311,8 +304,7 @@ and [API reference](https://developers.openai.com/api/reference/resources/decisi
 The OpenAI base URL defaults to `https://api.openai.com/v1`, overridable via
 `--base-url`, `DECISION_BASE_URL`, or `OPENAI_BASE_URL`, in that order. The default
 model is `gpt-6-luna` when no model is selected. `.env.local` is not loaded
-automatically; from a checkout, `uv run --env-file .env.local decision ...`
-loads the file explicitly without putting the key in command arguments.
+automatically. Export credentials into the environment before launching the command.
 
 ### Gemini Decisions
 
@@ -429,37 +421,38 @@ selector is the name of an environment variable holding the credential, never
 the credential itself. `DECISION_API_KEY` can hold an explicitly selected key
 directly. Default provider keys are used only on the matching provider's official
 HTTPS host. Other hosts require an explicit key selector or `DECISION_API_KEY`.
-For `typesafe`, the base URL also honors `TYPESAFE_BASE_URL` and the SDK uses its
-usual default model. Compatible hosts must implement the selected Decisions
+For `typesafe`, the base URL also honors `TYPESAFE_BASE_URL`; the execution model
+defaults to `TYPESAFE_DEFAULT_MODEL`, then `jev-latest`. Compatible hosts must implement the selected Decisions
 or System One API; a chat-completions endpoint alone does not suffice.
 
 ### Provider extensions
 
-Python installations can load independently packaged providers through the
-`decision.providers.v1` entry-point group. Install the extension into the same
-environment as `decision`, then select its registered name:
+Install a provider package containing `decision-provider.json`, then select
+its registered name. The command can be written in any language:
 
 ```bash
-uv tool install 'git+https://github.com/rolandkakonyi/decision.git@v0.9.0' --with /path/to/provider-package
+decision providers install /path/to/provider-package
+decision providers list
 decision noul 'Is this a greeting?' --state 'Hello' --provider acme
-# DECISION_PROVIDER=acme selects it by default for CLI and MCP.
 ```
 
-Only the selected provider is imported. Built-in names are reserved; duplicate
-external registrations fail instead of silently selecting one. Extensions are
-trusted Python code with access to the process environment. Install packages
-you trust. Standalone executables support the four built-ins; extensions require
-a Python installation.
+Local directories/manifests, pinned Git repositories, and checksum-verified
+HTTPS archives are supported. Providers are trusted programs with normal user
+permissions. Authors own packaging and setup; install the declared runtimes
+before installing a plugin. Setup runs only during explicit installation or
+update. Evaluation never installs dependencies.
+
+Personal registrations are loaded by default. Team configurations require an
+explicit `--project-config FILE`; the working directory does not activate
+plugins. An inference MCP server selects one provider at startup and retains
+its installed artifact until restart. `decision mcp --management` instead
+exposes installation, listing, and removal tools.
 
 The same model/base-URL/key-selector overrides and common validation apply to
-extensions. Provider routing and credential selection remain fixed MCP server
-settings. Skill and Codex plugin exports remain deterministic and do not load
-external providers; forward extension-specific variable names with
-`decision plugin --env-var NAME` when using MCP integration.
-
-See [the provider API](docs/provider-plugins.md) for registration, interface,
-validation, and transport requirements. This extension mechanism is separate
-from the generated Codex plugin below.
+extensions. Exports do not load external providers; forward extension-specific
+variable names with `decision plugin --env-var NAME` for MCP integration.
+See [the provider protocol](docs/provider-plugins.md) for package and message
+formats. This is separate from the generated Codex plugin below.
 
 Use repeatable `--disable-provider NAME` flags to exclude installed or built-in
 providers for one invocation:
@@ -550,7 +543,7 @@ decision skill --output skills/decision --check
 
 The generator owns `skills/decision/SKILL.md` and its example, input schema,
 and command reference. The schema and command reference come from the running
-tool. Edit `src/decision_cli/skill.py` and the CLI definitions, then regenerate.
+tool. Edit `src/skill.rs`, `src/templates/`, and the CLI definitions, then regenerate.
 CI rejects a stale generated export. No key or provider access is required.
 
 Installing the skill does not install the executable. The export is portable:
@@ -562,25 +555,23 @@ that host separately.
 ```bash
 git clone https://github.com/rolandkakonyi/decision.git
 cd decision
-uv sync --locked --group build
-uv run --locked decision skill --output skills/decision --check
+cargo build --locked
+cargo test --locked
+uv sync --locked
+target/debug/decision skill --output skills/decision --check
 uv run --locked python -m unittest discover -s tests -v
-uv run --locked python scripts/verify_wheel.py
-uv run --locked --group build python scripts/build_standalone.py --output .state/dist
-DECISION_TEST_EXECUTABLE="$PWD/.state/dist/decision" \
-  uv run --locked python -m unittest discover -s tests -p 'test_*mcp.py' -v
 ```
 
-Tests use local fixtures without inference. Do not commit environment files,
-credentials, build directories, or generated executables. The clean-wheel check
-installs outside the checkout and tests CLI, skill generation, images, and MCP.
-See [AGENTS.md](AGENTS.md) for the module map, contracts, and narrow checks.
+Rust owns the executable and all provider transports. Python and uv are test
+tooling only. Tests use local fixtures without inference. Do not commit
+credentials, environment files, build outputs, or executables. See
+[AGENTS.md](AGENTS.md) for contracts and [the build guide](docs/standalone.md)
+for archive verification.
 
-CI runs the source suite on Linux with Python 3.11/3.14 and macOS with 3.14,
-plus separate wheel, isolated native Codex plugin, and Linux/macOS standalone jobs. uv/Python and
-PyInstaller library caches reduce repeated downloads and processing; build
-outputs are always regenerated. Other platforms require native builds and
-testing. Dependencies are recorded in `uv.lock`.
+CI builds and tests native macOS, Linux, and Windows binaries, including CLI,
+MCP, provider fixtures, runtime plugins, and packaged artifacts. A separate
+Linux job verifies real Codex plugin installation. Cargo dependencies are
+recorded in `Cargo.lock`; Python test dependencies are recorded in `uv.lock`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and release workflows,
 and [SECURITY.md](SECURITY.md) for private vulnerability reporting.

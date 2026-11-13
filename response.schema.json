@@ -283,7 +283,7 @@
     "duration_ms": {
       "type": "number",
       "minimum": 0,
-      "description": "Client-measured elapsed milliseconds for SDK setup, image upload, and provider response handling for the entire batch."
+      "description": "Client-measured elapsed milliseconds for provider execution, image upload, and response handling for the entire batch."
     }
   },
   "required": [
