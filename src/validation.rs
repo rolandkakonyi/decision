@@ -82,23 +82,30 @@ pub fn request(r: &mut Value, paths: bool, directory: &Path) -> Result<()> {
             }
             let path = m.get("path");
             let data = m.get("data_base64");
+            if path.is_some() && !paths {
+                return Err(Error::input(
+                    "MCP image assets require data_base64; local paths are supported only by the CLI",
+                ));
+            }
             let raw = match (path, data) {
                 (Some(p), None) if paths && nonempty(p) => {
                     let p = p.as_str().unwrap();
-                    let file = if let Some(tail) = p.strip_prefix("~/") {
-                        std::path::PathBuf::from(std::env::var("HOME").map_err(|_| Error::Input)?)
-                            .join(tail)
-                    } else {
-                        directory.join(p)
-                    };
-                    read_bounded(File::open(file).map_err(|_| Error::Input)?, 16 << 20)?
+                    let file = directory.join(crate::cli::expand_home(p)?);
+                    read_bounded(
+                        File::open(file).map_err(|_| {
+                            Error::input(
+                                "Cannot read image file; check the selected path and permissions",
+                            )
+                        })?,
+                        16 << 20,
+                    )?
                 }
                 (None, Some(d)) if nonempty(d) => {
                     let s = d.as_str().unwrap();
                     if s.len() > 4 * (16_usize * 1024 * 1024).div_ceil(3) {
                         return Err(Error::Input);
                     }
-                    STANDARD.decode(s).map_err(|_| Error::Input)?
+                    STANDARD.decode(s).map_err(|_| Error::input("Image data_base64 must be valid standard base64 without a data: prefix"))?
                 }
                 _ => return Err(Error::Input),
             };
@@ -215,7 +222,7 @@ pub fn result(v: &Value, qs: &Value) -> Result<Value> {
                 if left > num(&b["right"], 1.0)? || top > num(&b["bottom"], 1.0)? {
                     return Err(Error::Data);
                 }
-                let c = a.get("confidence").ok_or(Error::Data)?;
+                let c = a.get("confidence").unwrap_or(&Value::Null);
                 if !c.is_null() {
                     num(c, 1.0)?;
                 }

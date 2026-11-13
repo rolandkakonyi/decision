@@ -70,7 +70,20 @@ fn manifest(root: &Path) -> Result<Manifest> {
         || !valid_argv(&m.command)
         || m.setup.as_ref().is_some_and(|a| !valid_argv(a))
         || check_url(&m.default_base_url).is_err()
-        || !m.credential_env_vars.iter().all(|s| env_name(s))
+        || !m.credential_env_vars.iter().all(|s| {
+            env_name(s)
+                && !s.starts_with("DECISION_")
+                && ![
+                    "TYPESAFE_API_KEY",
+                    "TYPESAFEAI_API_KEY",
+                    "OPENAI_API_KEY",
+                    "CLOUDFLARE_API_TOKEN",
+                    "CLOUDFLARE_AUTH_TOKEN",
+                    "GEMINI_API_KEY",
+                    "GOOGLE_API_KEY",
+                ]
+                .contains(&s.as_str())
+        })
     {
         return Err(Error::Input);
     }
@@ -103,6 +116,24 @@ fn write_registry(path: &Path, r: &Registry) -> Result<()> {
         .map_err(|_| Error::Input)?;
     temp.persist(path).map_err(|_| Error::Input)?;
     Ok(())
+}
+fn update_registry(path: &Path, update: impl FnOnce(&mut Registry) -> Result<()>) -> Result<()> {
+    fs::create_dir_all(path.parent().ok_or(Error::Input)?).map_err(|_| Error::Input)?;
+    let mut lock_path = path.as_os_str().to_os_string();
+    lock_path.push(".lock");
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|_| Error::Input)?;
+    fs4::FileExt::lock(&lock).map_err(|_| Error::Input)?;
+    // Only the re-read and atomic activation are serialized. Network, copying
+    // and author setup finish before acquiring the registry's write lock.
+    let mut registry = read_registry(path)?;
+    update(&mut registry)?;
+    write_registry(path, &registry)
 }
 fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     let meta = fs::symlink_metadata(src).map_err(|_| Error::Input)?;
@@ -283,16 +314,17 @@ pub async fn install(o: &Options, source: &str, checksum: &str) -> Result<Value>
     if manifest(&root)? != m {
         return Err(Error::Input);
     }
-    let mut r = read_registry(&registry_path(o))?;
-    r.insert(
-        m.name.clone(),
-        Registration {
-            path: root,
-            version: m.version.clone(),
-            commit,
-        },
-    );
-    write_registry(&registry_path(o), &r)?;
+    update_registry(&registry_path(o), |r| {
+        r.insert(
+            m.name.clone(),
+            Registration {
+                path: root,
+                version: m.version.clone(),
+                commit,
+            },
+        );
+        Ok(())
+    })?;
     let _ = stage.keep();
     Ok(json!({"name":m.name,"version":m.version,"restart_required":true}))
 }
@@ -308,11 +340,12 @@ pub fn remove(o: &Options, name: &str) -> Result<Value> {
     if !safe_name(name) || reserved(name) {
         return Err(Error::Input);
     }
-    let mut r = read_registry(&registry_path(o))?;
-    if r.remove(name).is_none() {
-        return Err(Error::Input);
-    }
-    write_registry(&registry_path(o), &r)?;
+    update_registry(&registry_path(o), |r| {
+        if r.remove(name).is_none() {
+            return Err(Error::Input);
+        }
+        Ok(())
+    })?;
     Ok(json!({"name":name,"removed":true}))
 }
 impl Plugin {
@@ -360,7 +393,7 @@ pub async fn resolve(o: &Options) -> Result<Option<Plugin>> {
     if o.disabled.contains(&o.provider) {
         return Err(Error::Disabled);
     }
-    if o.provider == "typesafe" {
+    if reserved(&o.provider) {
         return Ok(None);
     }
     if !safe_name(&o.provider) || reserved(&o.provider) {
@@ -401,5 +434,86 @@ pub async fn management(o: &Options, name: &str, a: Value) -> Result<Value> {
             remove(o, a["name"].as_str().unwrap())
         }
         _ => Err(Error::Input),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn concurrent_activation_preserves_all_registrations() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("registry.json");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    update_registry(&path, |registry| {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                        registry.insert(
+                            format!("fixture-{i}"),
+                            Registration {
+                                path: Path::new("artifact").into(),
+                                version: "1".into(),
+                                commit: String::new(),
+                            },
+                        );
+                        Ok(())
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(read_registry(&path).unwrap().len(), 8);
+    }
+    #[test]
+    fn failed_activation_keeps_registry() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("registry.json");
+        update_registry(&path, |r| {
+            r.insert(
+                "fixture".into(),
+                Registration {
+                    path: "old".into(),
+                    version: "1".into(),
+                    commit: String::new(),
+                },
+            );
+            Ok(())
+        })
+        .unwrap();
+        let original = fs::read(&path).unwrap();
+        assert!(
+            update_registry(&path, |r| {
+                r.clear();
+                Err(Error::Input)
+            })
+            .is_err()
+        );
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+    #[test]
+    fn archives_reject_symlinks() {
+        let mut archive = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name("../outside").unwrap();
+        header.set_cksum();
+        archive
+            .append_data(&mut header, "escape", std::io::empty())
+            .unwrap();
+        let tar = archive.into_inner().unwrap();
+        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gzip.write_all(&tar).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        assert!(extract(&gzip.finish().unwrap(), root.path()).is_err());
     }
 }

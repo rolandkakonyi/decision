@@ -2,9 +2,11 @@ mod cli;
 mod json;
 mod mcp;
 mod output;
+mod plugin;
 mod process;
 mod provider;
 mod providers;
+mod skill;
 mod store;
 mod validation;
 
@@ -39,7 +41,7 @@ impl fmt::Display for Error {
             Self::Input => "Invalid request or JSON input",
             Self::Data => "Provider returned invalid decision data; no answers returned",
             Self::Provider => "Provider operation failed; no answers returned",
-            Self::Disabled => "Selected provider is disabled",
+            Self::Disabled => "Selected provider is disabled for this invocation; choose another --provider or remove its --disable-provider flag",
             Self::InputMessage(s) | Self::ExecutionMessage(s) => s,
         })
     }
@@ -103,8 +105,18 @@ async fn run(args: Vec<std::ffi::OsString>) -> Result<()> {
         }
     };
     let (name, m) = matches.subcommand().unwrap();
-    if matches!(name, "skill" | "plugin") {
-        return Err(Error::execution("Export modules awaiting integration"));
+    if name == "skill" {
+        let output = cli::get(m, "output").map(cli::expand_home).transpose()?;
+        return skill::export(output.as_deref(), cli::enabled(m, "check"));
+    }
+    if name == "plugin" {
+        return plugin::export(
+            &cli::expand_home(cli::get(m, "output").unwrap())?,
+            cli::get(m, "integration").unwrap(),
+            cli::get(m, "mcp-command").unwrap(),
+            &cli::many(m, "env-var"),
+            cli::enabled(m, "check"),
+        );
     }
     if name == "providers" {
         let (name, m) = m.subcommand().unwrap();

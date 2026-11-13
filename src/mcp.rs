@@ -55,10 +55,12 @@ impl Host {
         } else {
             let mut input: Value =
                 serde_json::from_str(include_str!("../request.schema.json")).unwrap();
-            if let Some(p) = &self.plugin
-                && !p.manifest.schema_constraints.is_empty()
-            {
-                input["allOf"] = json!([p.manifest.schema_constraints]);
+            let constraints = match &self.plugin {
+                Some(p) => Value::Object(p.manifest.schema_constraints.clone()),
+                None => crate::providers::schema_constraints(&self.options.provider),
+            };
+            if constraints.as_object().is_some_and(|m| !m.is_empty()) {
+                input["allOf"] = json!([constraints]);
             }
             let output = serde_json::from_str(include_str!("../response.schema.json")).unwrap();
             let mut t = tool(
@@ -80,7 +82,7 @@ impl Host {
 impl ServerHandler for Host {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("decision-prototype-rust", "1"))
+            .with_server_info(Implementation::new("decision", env!("CARGO_PKG_VERSION")))
     }
     async fn list_tools(
         &self,

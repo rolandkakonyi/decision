@@ -1,10 +1,30 @@
 use serde_json::Value;
+use unicode_general_category::{GeneralCategory as Category, get_general_category};
 
 fn text(v: &Value) -> String {
     match v.as_str() {
-        Some(s) => s.chars().map(|c| {
-            if c.is_control() || c != ' ' && c.is_whitespace() || matches!(c,'\u{00ad}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}') { format!("\\u{:04x}",c as u32) } else { c.to_string() }
-        }).collect(),
+        Some(s) => s
+            .chars()
+            .map(|c| {
+                if c != ' '
+                    && matches!(
+                        get_general_category(c),
+                        Category::Control
+                            | Category::Format
+                            | Category::Unassigned
+                            | Category::PrivateUse
+                            | Category::Surrogate
+                            | Category::LineSeparator
+                            | Category::ParagraphSeparator
+                            | Category::SpaceSeparator
+                    )
+                {
+                    format!("\\u{:04x}", c as u32)
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect(),
         None => json_text(v),
     }
 }
@@ -175,5 +195,6 @@ mod tests {
     #[test]
     fn escapes_terminal_controls() {
         assert_eq!(text(&json!("a\n\u{1b}[2J")), "a\\u000a\\u001b[2J");
+        assert_eq!(text(&json!("Café \u{00a0}\u{e000}")), "Café \\u00a0\\ue000");
     }
 }

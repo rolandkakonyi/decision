@@ -412,3 +412,98 @@ pub fn attach_images(payload: &mut Value, images: &[String], directory: &Path) -
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn parsed(args: &[&str]) -> ArgMatches {
+        parse(args.iter().map(OsString::from)).unwrap()
+    }
+    #[test]
+    fn json_positions_and_command_surfaces() {
+        for args in [
+            vec!["--json", "noul", "Question?", "--state", "x"],
+            vec!["noul", "Question?", "--state", "x", "--json"],
+        ] {
+            let m = parsed(&args);
+            assert!(enabled(&m, "json"));
+        }
+        for name in [
+            "noul",
+            "choice",
+            "score",
+            "box",
+            "ask",
+            "run",
+            "mcp",
+            "skill",
+            "plugin",
+            "providers",
+        ] {
+            assert!(help_text().contains(name));
+        }
+        assert!(
+            !parse([OsString::from("--version")])
+                .unwrap_err()
+                .use_stderr()
+        );
+        assert!(
+            parse(["noul", "Question?", "--state", "x", "--state-file", "y"].map(OsString::from))
+                .is_err()
+        );
+    }
+    #[test]
+    fn choice_order_empty_descriptions_and_images() {
+        let m = parsed(&[
+            "choice",
+            "Pick",
+            "--state",
+            "literal",
+            "--option",
+            "z=",
+            "--option",
+            "a=A",
+            "--image",
+            "photo=photo.png",
+        ]);
+        let o = Options::default();
+        let (_, sub) = m.subcommand().unwrap();
+        let (r, _) = make_request("choice", sub, &o).unwrap();
+        assert_eq!(
+            r["questions"]["answer"]["criteria"],
+            json!({"z":null,"a":"A"})
+        );
+        assert_eq!(
+            r["questions"]["answer"]["criteria"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .next()
+                .unwrap(),
+            "z"
+        );
+        assert_eq!(r["state"]["context"], "literal");
+        assert_eq!(r["state"]["images"]["photo"], "<decision-image:photo>");
+        assert!(
+            Path::new(
+                r["assets"]["<decision-image:photo>"]["path"]
+                    .as_str()
+                    .unwrap()
+            )
+            .is_absolute()
+        );
+    }
+    #[test]
+    fn duplicate_cli_options_are_input_errors() {
+        let m = parsed(&[
+            "choice", "Pick", "--state", "x", "--option", "a=A", "--option", "a=B",
+        ]);
+        let (_, sub) = m.subcommand().unwrap();
+        assert_eq!(
+            make_request("choice", sub, &Options::default())
+                .unwrap_err()
+                .exit_code(),
+            2
+        );
+    }
+}

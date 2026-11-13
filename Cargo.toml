@@ -31,6 +31,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "io-std", "time", "signal"] }
 tokio-util = { version = "0.7", features = ["codec", "rt"] }
 url = "2"
+unicode-general-category = "=1.1.0"
 
 [target.'cfg(windows)'.dependencies]
 process-wrap = { version = "=10.0.1", default-features = false, features = ["tokio1", "job-object", "kill-on-drop"] }
