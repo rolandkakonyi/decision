@@ -1,0 +1,177 @@
+{
+  "openai": {
+    "properties": {
+      "questions": {
+        "maxProperties": 400,
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "noul"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "choice"
+                },
+                "criteria": {
+                  "minProperties": 2,
+                  "maxProperties": 255
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "score"
+                },
+                "criteria": {
+                  "minItems": 2,
+                  "maxItems": 10
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "cloudflare": {
+    "properties": {
+      "questions": {
+        "maxProperties": 64,
+        "propertyNames": {
+          "pattern": "^[A-Za-z0-9_.-]{1,100}$"
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "noul"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "choice"
+                },
+                "criteria": {
+                  "minProperties": 2,
+                  "maxProperties": 255
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "score"
+                },
+                "criteria": {
+                  "minItems": 2,
+                  "maxItems": 10
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          ]
+        }
+      },
+      "model": {
+        "enum": [
+          "clef",
+          "clef-flash",
+          "@cf/cloudflare/clef",
+          "@cf/cloudflare/clef-flash"
+        ]
+      },
+      "assets": {
+        "maxProperties": 4,
+        "description": "Clef: at most 4 images, 4 MiB each and 8 MiB combined.",
+        "additionalProperties": {
+          "properties": {
+            "data_base64": {
+              "maxLength": 5592408
+            }
+          }
+        }
+      }
+    }
+  },
+  "gemini": {
+    "properties": {
+      "questions": {
+        "maxProperties": 1000,
+        "propertyNames": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "noul"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "choice"
+                },
+                "criteria": {
+                  "minProperties": 2,
+                  "maxProperties": 255,
+                  "propertyNames": {
+                    "maxLength": 128
+                  }
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "score"
+                },
+                "criteria": {
+                  "minItems": 2,
+                  "maxItems": 255
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,85 @@
+[
+  {
+    "state": false,
+    "openai": {
+      "type": "input_text",
+      "text": "false"
+    },
+    "gemini": {
+      "type": "text",
+      "text": "false"
+    }
+  },
+  {
+    "state": 0,
+    "openai": {
+      "type": "input_text",
+      "text": "0"
+    },
+    "gemini": {
+      "type": "text",
+      "text": "0"
+    }
+  },
+  {
+    "state": [
+      1,
+      2
+    ],
+    "openai": {
+      "type": "input_text",
+      "text": "[1, 2]"
+    },
+    "gemini": {
+      "type": "text",
+      "text": "[1, 2]"
+    }
+  },
+  {
+    "state": [],
+    "openai": {
+      "type": "input_json",
+      "data": []
+    },
+    "gemini": {
+      "type": "text",
+      "text": "[]"
+    }
+  },
+  {
+    "state": [
+      {
+        "é": 1
+      },
+      {
+        "b": true
+      }
+    ],
+    "openai": {
+      "type": "input_json",
+      "data": [
+        {
+          "é": 1
+        },
+        {
+          "b": true
+        }
+      ]
+    },
+    "gemini": {
+      "type": "text",
+      "text": "[{\"é\": 1}, {\"b\": true}]"
+    }
+  },
+  {
+    "state": "literal",
+    "openai": {
+      "type": "input_text",
+      "text": "literal"
+    },
+    "gemini": {
+      "type": "text",
+      "text": "literal"
+    }
+  }
+]

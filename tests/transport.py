@@ -1,14 +1,7 @@
-"""Shared process isolation for source, clean wheel, and standalone fixtures."""
+"""Shared native-process isolation for CLI and MCP fixtures."""
 
 import os
-from pathlib import Path
-import sys
-
-
-def command():
-    binary = os.getenv("DECISION_TEST_EXECUTABLE")
-    script = Path(__file__).resolve().parents[1] / "src/decision_cli/cli.py"
-    return [binary] if binary else [sys.executable, str(script)]
+from native import command, environment
 
 
 def working_directory():
@@ -16,12 +9,5 @@ def working_directory():
 
 
 def isolate(environment):
-    mode = os.getenv("DECISION_TEST_MODE", "standalone" if os.getenv("DECISION_TEST_EXECUTABLE") else "source")
-    if mode not in {"source", "wheel", "standalone"}:
-        raise ValueError("DECISION_TEST_MODE must be source, wheel, or standalone")
-    if mode == "standalone":
-        environment.update(PATH="/nonexistent", PYTHONHOME="/nonexistent", PYTHONPATH="/nonexistent")
-    elif mode == "wheel":
-        environment.pop("PYTHONHOME", None)
-        environment.pop("PYTHONPATH", None)
-    return environment
+    from native import environment as clean_environment
+    return clean_environment(environment)

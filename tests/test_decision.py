@@ -1,171 +1,91 @@
-"""Decision CLI contracts; local fixtures only, no inference."""
+"""Native CLI contracts exercised through local fixtures, without inference."""
 
-from contextlib import redirect_stderr, redirect_stdout
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import importlib.machinery
-import importlib.util
-import io
 import json
-import os
 from pathlib import Path
-import subprocess
-import sys
-import tempfile
-import threading
 import unittest
-from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / "src/decision_cli/cli.py"
-loader = importlib.machinery.SourceFileLoader("decision", str(HELPER))
-spec = importlib.util.spec_from_loader(loader.name, loader)
-decision = importlib.util.module_from_spec(spec)
-loader.exec_module(decision)
+from native import ROOT, evaluate, invoke, response_server
+
+
+def noul_response(body):
+    return {"model": body.get("model", "fixture"), "answers": {"answer": {"type": "noul", "noul": 0.75}},
+            "usage": {"input_tokens": 0, "output_tokens": None}}
 
 
 class DecisionTests(unittest.TestCase):
-    def setUp(self):
-        environment = patch.dict(os.environ, {}, clear=True)
-        environment.start()
-        self.addCleanup(environment.stop)
+    def test_dry_run_preserves_literal_context_without_credentials(self):
+        context = "`$(no)`\nquotes'"
+        result = invoke("noul", "Is this literal?", "--state", context, "--dry-run", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["state"], context)
+        self.assertEqual(result.stderr, "")
 
-    def invoke(self, *argv):
-        out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            code = decision.main(list(argv))
-        return code, out.getvalue(), err.getvalue()
+    def test_choice_score_batch_and_json_flag_positions(self):
+        for argv, expected in ((["choice", "Which?", "--option", "one=First", "--option", "two=Second"], {"one": "First", "two": "Second"}),
+                               (["score", "How blocked?", "--level", "Free", "--level", "Blocked"], ["Free", "Blocked"])):
+            for flags in (["--json", *argv], [*argv, "--json"]):
+                result = invoke(*flags, "--state", "x", "--dry-run")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["questions"]["answer"]["criteria"], expected)
+        result = invoke("run", "-", "--model", "fixture", "--dry-run", "--json", data=(ROOT / "examples/request.json").read_text())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["model"], "fixture")
+        self.assertEqual(len(json.loads(result.stdout)["questions"]), 3)
 
-    def test_dry_run_needs_no_credentials_and_preserves_literal_context(self):
-        with patch.dict(os.environ, {}, clear=True):
-            code, out, err = self.invoke("noul", "Is this literal?", "--state", "`$(no)`\nquotes'", "--dry-run", "--json")
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["state"], "`$(no)`\nquotes'")
-        self.assertEqual(err, "")
+    def test_invalid_input_never_returns_an_answer_or_selected_context(self):
+        for flags in (("--timeout", "nan"), ("--timeout", "0"), ("--timeout", "inf"), ("--base-url", "http://remote.example")):
+            result = invoke("noul", "Question?", "--state", "x", *flags, "--dry-run", "--json")
+            self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+        result = invoke("run", "-", "--dry-run", "--json", data='{"state":"private context"')
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
+        self.assertNotIn("private context", result.stderr)
+        result = invoke("ask", "--state-file", "-", "--questions-file", "-", "--dry-run", "--json", data="{}")
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
+        self.assertIn("Only one input", result.stderr)
 
-    def test_choice_score_and_batch(self):
-        code, out, _ = self.invoke("choice", "Which?", "--state", "x", "--option", "one=First", "--option", "two=Second", "--dry-run", "--json")
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["questions"]["answer"]["criteria"], {"one": "First", "two": "Second"})
-        code, out, _ = self.invoke("score", "How blocked?", "--state", "x", "--level", "Free", "--level", "Blocked", "--dry-run", "--json")
-        self.assertEqual(json.loads(out)["questions"]["answer"]["criteria"], ["Free", "Blocked"])
-        self.assertEqual(code, 0)
-        with patch("sys.stdin", io.StringIO((ROOT / "examples/request.json").read_text())):
-            code, out, _ = self.invoke("run", "-", "--model", "fixture", "--dry-run", "--json")
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["model"], "fixture")
-        self.assertEqual(len(json.loads(out)["questions"]), 3)
+    def test_custom_host_does_not_receive_implicit_provider_keys(self):
+        with response_server(noul_response) as (url, requests):
+            for settings in ({"TYPESAFE_API_KEY": "do-not-forward"},
+                             {"TYPESAFEAI_API_KEY": "do-not-forward"},
+                             {"DECISION_API_KEY": "generic-fixture", "DECISION_API_KEY_ENV": "UNSET_SELECTOR"}):
+                result = invoke("noul", "Question?", "--state", "x", "--json", "--base-url", url, env=settings)
+                self.assertEqual((result.returncode, result.stdout), (2, ""))
+            self.assertEqual(requests, [])
 
-    def test_invalid_input_is_not_an_answer(self):
-        for extra in (("--timeout", "nan"), ("--timeout", "0"), ("--base-url", "http://remote.example")):
-            code, out, _ = self.invoke("noul", "Question?", "--state", "x", *extra, "--dry-run", "--json")
-            self.assertEqual((code, out), (2, ""))
-        with patch("sys.stdin", io.StringIO('{"state": "private context"')):
-            code, out, err = self.invoke("run", "-", "--dry-run", "--json")
-        self.assertEqual((code, out), (2, ""))
-        self.assertNotIn("private context", err)
-        with patch("sys.stdin", io.StringIO("{}")):
-            code, out, err = self.invoke("ask", "--state-file", "-", "--questions-file", "-", "--dry-run", "--json")
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("Only one input", err)
+    def test_environment_provider_model_and_flags(self):
+        result = invoke("noul", "Question?", "--state", "x", "--dry-run", "--json", env={"DECISION_PROVIDER": "gemini"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["model"], "gemini-decision-1")
+        result = invoke("noul", "Question?", "--state", "x", "--provider", "cloudflare", "--model", "clef-flash", "--dry-run", "--json",
+                        env={"DECISION_PROVIDER": "gemini", "DECISION_MODEL": "other"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["model"], "clef-flash")
 
-    def test_custom_host_never_inherits_typesafe_credentials(self):
-        with patch.dict(os.environ, {"TYPESAFEAI_API_KEY": "fixture-typesafe"}, clear=True):
-            for url in ("https://other.example/v1", "https://api.typesafe.ai.evil.example", "https://api.typesafe.ai:444"):
-                args = decision.parser().parse_args(["noul", "Question?", "--state", "x", "--base-url", url])
-                self.assertIsNone(decision.connection(args))
-            args.base_url = "https://api.typesafe.ai"
-            self.assertEqual(decision.connection(args), "fixture-typesafe")
-            args.api_key_env = "UNSET_PROVIDER_KEY"
-            self.assertIsNone(decision.connection(args))
+    def test_sdk_model_fallback_and_cli_mcp_model_precedence(self):
+        payload = {"state": "x", "questions": {"answer": {"type": "noul", "instructions": "Question?"}}}
+        for settings, flags, model in (({}, [], "jev-latest"), ({"TYPESAFE_DEFAULT_MODEL": "sdk-model"}, [], "sdk-model"),
+                                       ({"TYPESAFE_DEFAULT_MODEL": "sdk-model", "DECISION_MODEL": "env-model"}, [], "env-model"),
+                                       ({"DECISION_MODEL": "env-model"}, ["--model", "flag-model"], "flag-model")):
+            result, requests = evaluate("typesafe", payload, noul_response, flags=flags, settings=settings)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(requests[0]["body"]["model"], model)
+            self.assertEqual(json.loads(result.stdout)["model"], model)
 
-    def test_environment_selects_provider_and_flags_override_it(self):
-        settings = {"DECISION_BASE_URL": "https://other.example/api", "DECISION_API_KEY_ENV": "OTHER_KEY",
-                    "OTHER_KEY": "other-fixture", "FLAG_KEY": "flag-fixture", "DECISION_MODEL": "other-model"}
-        with patch.dict(os.environ, settings, clear=True):
-            args = decision.parser().parse_args(["noul", "Question?", "--state", "x"])
-            self.assertEqual(args.base_url, settings["DECISION_BASE_URL"])
-            self.assertEqual(args.model, "other-model")
-            self.assertEqual(decision.connection(args), "other-fixture")
-            args = decision.parser().parse_args(["noul", "Question?", "--state", "x", "--api-key-env", "FLAG_KEY",
-                                                "--base-url", "https://flag.example", "--model", "flag-model"])
-            self.assertEqual(decision.connection(args), "flag-fixture")
-            self.assertEqual(args.base_url, "https://flag.example")
-            self.assertEqual(args.model, "flag-model")
-
-    @unittest.skipUnless(importlib.util.find_spec("typesafe_sdk"), "requires typesafe-sdk==0.7.5")
-    def test_batch_duration_uses_monotonic_elapsed_time(self):
-        payload = json.loads((ROOT / "examples/request.json").read_text())
-        answers = {
-            "refund": {"type": "noul", "noul": 0.9},
-            "team": {"type": "choice", "choice": "billing", "confidence": 1,
-                     "probabilities": {"billing": 1, "technical": 0}},
-            "blocking": {"type": "score", "score": 0, "confidence": 1,
-                         "legend": {str(i): level for i, level in enumerate(payload["questions"]["blocking"]["criteria"])},
-                         "probabilities": {"0": 1, "1": 0, "2": 0}},
-        }
-        with patch.dict(os.environ, {"DECISION_API_KEY": "fixture-key"}, clear=True), \
-                patch("typesafe_sdk.TypeSafeClient") as sdk, \
-                patch.object(decision.time, "perf_counter", side_effect=[10.0, 10.125]) as clock:
-            args = decision.parser().parse_args(["run", "-"])
-            client = sdk.return_value.__enter__.return_value
-            client.system_one.return_value.model_dump.return_value = {
-                "model": "fixture", "usage": {"input_tokens": 10, "output_tokens": 3}, "answers": answers,
-            }
-            result = decision.evaluate_request(payload, args)
-        self.assertEqual(result["duration_ms"], 125.0)
-        self.assertEqual(clock.call_count, 2)
-        client.system_one.assert_called_once_with(**payload)
-
-    @unittest.skipUnless(importlib.util.find_spec("typesafe_sdk"), "requires typesafe-sdk==0.7.5")
-    def test_real_sdk_transport_and_error_redaction(self):
-        requests = []
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                requests.append((self.path, self.headers.get("Authorization"), body))
-                failed = body["state"] == "fail"
-                data = ({"error": "fixture-provider-key private context"} if failed else {
-                    "model": "fixture", "usage": ({} if body["state"] == "unreported" else {
-                        "input_tokens": 0 if body["state"] == "zero" else 1,
-                        "output_tokens": 0 if body["state"] == "zero" else 1,
-                    }),
-                    "answers": {"answer": {"type": "noul", "noul": 0.75}},
-                })
-                self.send_response(401 if failed else 200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps(data).encode())
-            def log_message(self, *_):
-                pass
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            env = dict(os.environ, DECISION_API_KEY="fixture-provider-key", TYPESAFEAI_API_KEY="never-forward")
-            for state, expected in (("hello", 0), ("unreported", 0), ("zero", 0), ("fail", 1)):
-                result = subprocess.run([sys.executable, str(HELPER), "noul", "Is it a greeting?", "--state", state, "--json",
-                                         "--base-url", f"http://127.0.0.1:{server.server_port}/custom", "--model", "fixture"],
-                                        env=env, text=True, capture_output=True, timeout=10)
-                self.assertEqual(result.returncode, expected, result.stderr)
-                if expected == 0:
-                    response = json.loads(result.stdout)
-                    self.assertEqual(response["answers"]["answer"]["noul"], 0.75)
-                    count = None if state == "unreported" else (0 if state == "zero" else 1)
-                    self.assertEqual(response["usage"], {"input_tokens": count, "output_tokens": count})
-                    self.assertIsInstance(response["duration_ms"], (int, float))
-                    self.assertGreaterEqual(response["duration_ms"], 0)
-                else:
-                    self.assertEqual(result.stdout, "")
-                    self.assertNotIn("fixture-provider-key", result.stderr)
-                    self.assertNotIn("private context", result.stderr)
-            self.assertEqual(len(requests), 4)  # No retries, including on errors.
-            self.assertTrue(all(path == "/custom/v1/systemone" for path, _, _ in requests), requests)
-            self.assertTrue(all(auth == "Bearer fixture-provider-key" for _, auth, _ in requests))
-            self.assertEqual(requests[0][2]["model"], "fixture")
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
+    def test_duration_includes_provider_work_and_errors_are_redacted(self):
+        with response_server(noul_response, delay=0.04) as (url, requests):
+            result = invoke("noul", "Question?", "--state", "hello", "--json", "--base-url", url,
+                            env={"DECISION_API_KEY": "fixture-provider-key"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            value = json.loads(result.stdout)
+            self.assertGreaterEqual(value["duration_ms"], 30)
+            self.assertEqual(value["usage"], {"input_tokens": 0, "output_tokens": None})
+            self.assertEqual(len(requests), 1)
+        result, requests = evaluate("typesafe", {"state": "private context", "questions": {"answer": {"type": "noul", "instructions": "Question?"}}},
+                                    {"error": "fixture-provider-key private context"}, status=401)
+        self.assertEqual((result.returncode, result.stdout), (1, ""))
+        self.assertNotIn("fixture-provider-key", result.stderr)
+        self.assertNotIn("private context", result.stderr)
+        self.assertEqual(len(requests), 1)
 
 
 if __name__ == "__main__":

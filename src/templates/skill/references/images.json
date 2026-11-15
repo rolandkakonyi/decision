@@ -1,0 +1,21 @@
+{
+  "model": "jev-1.14.0",
+  "state": {
+    "photo": "<photo>"
+  },
+  "assets": {
+    "<photo>": {
+      "path": "photo.png"
+    }
+  },
+  "questions": {
+    "present": {
+      "type": "noul",
+      "instructions": "Is there a package in photo?"
+    },
+    "location": {
+      "type": "box",
+      "instructions": "Locate the package in photo"
+    }
+  }
+}

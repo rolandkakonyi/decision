@@ -1,0 +1,31 @@
+{
+  "model": "jev-1.14.0",
+  "state": {
+    "images": {
+      "dog": "<dog-photo>"
+    }
+  },
+  "assets": {
+    "<dog-photo>": {
+      "path": "dog.jpg"
+    }
+  },
+  "questions": {
+    "dog_present": {
+      "type": "noul",
+      "instructions": "Is a dog visible in images.dog?"
+    },
+    "dog_location": {
+      "type": "box",
+      "instructions": "Locate the dog in images.dog"
+    },
+    "breed": {
+      "type": "choice",
+      "instructions": "Which breed is the dog in images.dog?",
+      "criteria": {
+        "french_bulldog": "French bulldog",
+        "english_bulldog": "English bulldog"
+      }
+    }
+  }
+}

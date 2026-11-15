@@ -1,0 +1,42 @@
+[package]
+name = "decision"
+version = "0.10.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+publish = false
+description = "Typed judgments over text and images through CLI and MCP"
+repository = "https://github.com/rolandkakonyi/decision"
+readme = "README.md"
+authors = ["Roland Kákonyi"]
+
+[[bin]]
+name = "decision"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.23.1"
+clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context"] }
+fs4 = "=1.1.0"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+futures = "0.3"
+libc = "0.2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "multipart", "json"] }
+rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-io"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
+sha2 = "0.11"
+tar = { version = "0.4", default-features = false }
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "io-std", "time", "signal"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
+url = "2"
+unicode-general-category = "=1.1.0"
+
+[target.'cfg(windows)'.dependencies]
+process-wrap = { version = "=10.0.1", default-features = false, features = ["tokio1", "job-object", "kill-on-drop"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
