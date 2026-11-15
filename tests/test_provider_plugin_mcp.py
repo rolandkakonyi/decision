@@ -409,3 +409,18 @@ class Acceptance(unittest.TestCase):
                 if process.poll() is None:
                     process.kill()
                 process.communicate(timeout=3)
+
+    def test_installation_timeout_can_be_configured_and_rolls_back(self):
+        self.install(None, "--timeout", "120")
+        broken = package(self.root / "slow", "2.0.0")
+        (broken / "setup.py").write_text("import time\ntime.sleep(2)\n", encoding="utf-8")
+        result = self.cli("providers", "install", broken, "--plugin-home", self.home,
+                          "--timeout", ".1", success=False)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        entries = json.loads(self.cli("providers", "list", "--plugin-home", self.home).stdout)
+        self.assertEqual(next(item for item in entries if item["name"] == "fixture")["version"], "1.0.0")
+        self.assertEqual(len(list((self.home / "artifacts").iterdir())), 1)
+        for timeout in ("0", "nan", "inf"):
+            result = self.cli("providers", "install", self.source, "--plugin-home", self.home,
+                              "--timeout", timeout, success=False)
+            self.assertEqual(result.returncode, 2, result.stderr)

@@ -174,7 +174,11 @@ pub fn command() -> Command {
                             .required(true)
                             .help("Local package, checksum-verified archive, or pinned Git source"),
                     )
-                    .arg(value("sha256", "Required archive SHA-256")),
+                    .arg(value("sha256", "Required archive SHA-256"))
+                    .arg(
+                        value("timeout", "Finite positive installation timeout in seconds")
+                            .default_value("30"),
+                    ),
             ))
             .subcommand(scope(
                 Command::new("list").about("List registered provider versions"),

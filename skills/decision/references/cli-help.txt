@@ -483,6 +483,11 @@ Options:
       --sha256 <sha256>
           Required archive SHA-256
 
+      --timeout <timeout>
+          Finite positive installation timeout in seconds
+
+          [default: 30]
+
       --plugin-home <plugin-home>
           Personal provider installation directory
 
