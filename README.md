@@ -8,8 +8,10 @@
 Ask typed questions about text, JSON, and images from your terminal or AI agent.
 Decision connects to TypeSafe Jev, OpenAI Decisions, Gemini Decisions, and
 Cloudflare Clef through one request format and a common answer format.
+Route support messages, score urgency, or locate objects using constrained
+answers that scripts can validate.
 
-- **Noul:** estimate the probability that a statement is true.
+- **Noul (yes/no probability):** estimate the probability that a statement is true.
 - **Choice:** select from named options, with probabilities for each.
 - **Score:** rate evidence against ordered levels.
 - **Box:** locate a region in an image (TypeSafe only).
@@ -24,14 +26,15 @@ providers with executable plugins written in any language.
 brew install rolandkakonyi/tap/decision
 ```
 
-Decision is a native executable with all four built-in providers included.
 Upgrade with `brew upgrade rolandkakonyi/tap/decision`.
 
 Downloadable archives for macOS ARM64, Linux x86_64, and Windows x86_64 are
 available from [GitHub releases](https://github.com/rolandkakonyi/decision/releases/latest).
 Verify the SHA-256 checksum, extract the archive, and put `decision`
 (`decision.exe` on Windows) on PATH. Keep the accompanying license notices.
-See the [build guide](docs/standalone.md) for platform requirements.
+macOS and Windows archives are unsigned. Linux archives require a compatible
+glibc-based distribution. See the [build guide](docs/standalone.md) for platform
+requirements; Homebrew is the simplest installation path on macOS.
 
 To install from a source checkout with Rust:
 
@@ -47,19 +50,20 @@ Validate a request without credentials or inference:
 decision noul 'Does this request a refund?' --state 'Please refund my order.' --dry-run
 ```
 
-For a live query, export your provider's API key into the environment, select
-the provider, and omit `--dry-run`:
+TypeSafe is the default provider. For this walkthrough, export `OPENAI_API_KEY`
+into your environment and select OpenAI for the current shell:
 
 ```bash
 # Requires OPENAI_API_KEY in the environment.
-decision noul 'Does this request a refund?' --state 'Please refund my order.' \
-  --provider openai
+export DECISION_PROVIDER=openai
+decision noul 'Does this request a refund?' --state 'Please refund my order.'
 ```
 
 No model flag is required: each built-in provider has a default model.
 [Provider configuration](#provider-configuration) lists credentials and defaults.
 Decision does not load `.env` files automatically. Inference is billed by the
 selected provider.
+`--provider NAME` overrides the shell setting for a single command.
 
 Human-readable output is the default, including when piped. Add `--json` before
 or after a query command for structured output. Diagnostics go to stderr.
@@ -81,7 +85,9 @@ decision score 'How urgent is this issue?' \
 ```
 
 Choice returns one of the offered option keys. Include an `other` option when
-none of the named options may apply. Score levels run from lowest to highest.
+none of the named options may apply. Score levels run from lowest to highest,
+with a numeric score from 0 to the number of levels minus one. Scores may be
+fractional; `legend` maps zero-based level keys to their descriptions.
 
 For several questions about the same evidence, save a request as `request.json`:
 
@@ -128,6 +134,8 @@ Decision validates the entire response before returning a batch. Missing or
 invalid answers fail the batch without partial results. Choice and Score
 probability maps must include every offered option and total 1 within 0.02.
 Requests are not automatically retried, redirected, or sent to a fallback provider.
+`--timeout SECONDS` limits query execution (default: 30 seconds); expiration
+reports a provider failure without answers.
 
 ### Usage and timing
 
@@ -141,9 +149,9 @@ Duration: 243.180 ms
 
 JSON output and MCP `structuredContent` include `usage.input_tokens`,
 `usage.output_tokens`, and `duration_ms`. Token counts come from the provider;
-unreported counts are `null`, while zero remains zero. Duration covers provider
-execution, image uploads, and response handling, excluding process startup and
-local file validation. Dry runs have no response statistics.
+unreported counts are `null`, while zero remains zero. Duration is measured by
+Decision for the batch, excluding process startup and local file validation.
+Dry runs have no response statistics.
 
 ## Images
 
@@ -160,10 +168,14 @@ decision box 'Locate the dog in images.dog' \
   --image dog=dog.jpg --provider typesafe
 ```
 
+Box requires TypeSafe credentials, even when another provider is selected in
+your environment.
+
 Images appear under `state.images`. Existing object fields are preserved;
 scalar state is retained as `state.context`. Text state is optional when images
-are supplied. Unnamed images receive `image`, `image_2`, and so on; duplicate
-names are rejected.
+are supplied. Unnamed images are named by flag position: `image`, `image_2`, and
+so on. For example, `--image dog=dog.jpg --image photo.png` names the second
+image `image_2`. Duplicate names are rejected.
 
 Request files can include an `assets` map, with each asset reference used in
 state, instructions, or criteria:
@@ -188,9 +200,8 @@ descriptor with `{"data_base64": "...", "format": "png"}`. Use standard base64
 without whitespace or a `data:` prefix. Format is optional and inferred from
 the bytes; `png`, `jpg`, and `jpeg` are accepted.
 
-TypeSafe image and Box requests use its experimental image API; Decision sends
-the required opt-in header automatically. TypeSafe validates image decoding
-and dimensions of 280–1568 pixels per side. A Box answer
+TypeSafe image and Box requests use its experimental image API. TypeSafe
+validates image decoding and dimensions of 280–1568 pixels per side. A Box answer
 can locate a region even when the requested object is absent; pair it with a
 Noul presence question when that distinction matters.
 
@@ -200,7 +211,14 @@ files are included for [TypeSafe](skills/decision/references/dog-request.json),
 [OpenAI](skills/decision/references/openai-dog-request.json),
 [Gemini](skills/decision/references/gemini-dog-request.json), and
 [Cloudflare](skills/decision/references/cloudflare-dog-request.json).
-Copy an image request beside your own `dog.jpg` before running it.
+Copy an image request beside your own `dog.jpg` and select its matching provider:
+
+```bash
+decision run openai-dog-request.json --provider openai --json
+```
+
+Use `--provider typesafe`, `--provider gemini`, or `--provider cloudflare` for
+the corresponding request files. Request files do not select a provider.
 
 ## Provider configuration
 
@@ -255,13 +273,15 @@ A custom Cloudflare base URL must be a Workers AI run root, such as an account's
 `.../ai/run` or an AI Gateway's `.../workers-ai`. Decision appends
 `/@cf/cloudflare/MODEL`.
 
-## Runtime provider plugins
+## Custom providers
 
 Install a package containing `decision-provider.json`, then select its
 registered provider name:
 
 ```bash
 decision providers install /path/to/provider-package
+decision providers install 'git+https://github.com/example/acme.git#v1.0.0'
+decision providers install https://example.com/acme-1.0.0.tar.gz --sha256 HEX_DIGEST
 decision providers list
 decision noul 'Is this a greeting?' --state 'Hello' --provider acme
 decision providers remove acme
@@ -271,8 +291,9 @@ Plugins are trusted programs with normal user permissions, written in any
 language. Authors own packaging and setup; users supply declared runtimes.
 Install from a local directory or manifest, a Git repository with an explicit
 revision, or an HTTPS archive with a SHA-256 checksum. Setup runs only during
-explicit installation or update, never during evaluation. Plugin dry runs may
-launch the provider's validation commands, without inference.
+explicit installation or update, never during evaluation. Git sources require
+Git on PATH. Plugin dry runs still start the program for `describe` and
+`prepare`, but never call `evaluate`.
 
 Personal registrations load by default. Team registrations require explicit
 `--project-config FILE`; the working directory does not activate plugins.
@@ -319,8 +340,8 @@ Copy the exported directory into your agent's skill directory. Install the
 For Codex, generate a local plugin marketplace with either CLI or MCP integration:
 
 ```bash
-decision plugin --output "$PWD/.state/decision-mcp" --integration mcp
-codex plugin marketplace add "$PWD/.state/decision-mcp"
+decision plugin --output "$PWD/decision-plugin" --integration mcp
+codex plugin marketplace add "$PWD/decision-plugin"
 codex plugin add decision@decision-local
 ```
 
@@ -335,7 +356,7 @@ provider, model, and credentials in Codex's environment. For a custom credential
 variable or executable location:
 
 ```bash
-decision plugin --output "$PWD/.state/decision-mcp" --integration mcp \
+decision plugin --output "$PWD/decision-plugin" --integration mcp \
   --mcp-command /absolute/path/to/decision --env-var MY_PROVIDER_KEY
 ```
 
@@ -356,9 +377,9 @@ target/debug/decision skill --output skills/decision --check
 uv run --locked python -m unittest discover -s tests -v
 ```
 
-Rust builds the executable; Python and uv are integration-test tooling. Tests
-use local fixtures without paid inference. CI exercises native macOS, Linux,
-and Windows builds, packaged artifacts, and real Codex plugin installation.
+Development requires Rust, Python, and uv. Tests use local fixtures without paid
+inference. CI exercises native macOS, Linux, and Windows builds, packaged
+artifacts, and real Codex plugin installation.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, checks, generated-skill
 maintenance, and releases; the [build guide](docs/standalone.md) for archive
