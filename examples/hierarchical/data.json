@@ -1,0 +1,66 @@
+{
+  "groups": [
+    {
+      "id": "everyday_bags",
+      "description": "Bags and cases for commuting, shopping, school, and travel with luggage; not technical outdoor equipment.",
+      "children": [
+        {"id": "laptop_backpack", "description": "An everyday backpack with a padded compartment for a laptop."},
+        {"id": "laptop_sleeve", "description": "A close-fitting padded sleeve protecting a laptop inside another bag."},
+        {"id": "shopping_tote", "description": "An open or zip-top reusable bag carried by handles for shopping."},
+        {"id": "rolling_suitcase", "description": "A rigid or soft travel case with wheels and a telescoping handle."},
+        {"id": "packing_cube", "description": "A small zippered fabric organizer for clothes inside luggage."},
+        {"id": "messenger_bag", "description": "A cross-body shoulder bag with a flap for everyday work or school."}
+      ]
+    },
+    {
+      "id": "outdoor_equipment",
+      "description": "Equipment designed for hiking, camping, and carrying supplies outdoors.",
+      "children": [
+        {"id": "hiking_backpack", "description": "A trail backpack with load support, a hip belt, or hydration-system features."},
+        {"id": "dry_bag", "description": "A waterproof roll-top sack that keeps equipment dry while paddling or hiking."},
+        {"id": "sleeping_bag", "description": "An insulated sleeping enclosure for overnight camping."},
+        {"id": "camping_tent", "description": "A portable outdoor shelter held up by poles."},
+        {"id": "camping_stove", "description": "A portable fuel-burning cooker for outdoor meals."},
+        {"id": "trekking_poles", "description": "Handheld adjustable poles that support walking on trails."}
+      ]
+    },
+    {
+      "id": "electronics",
+      "description": "Powered electronic devices and accessories for charging, connectivity, and sound.",
+      "children": [
+        {"id": "power_bank", "description": "A rechargeable battery that charges other devices without a wall outlet."},
+        {"id": "wall_charger", "description": "An adapter plugged into a mains socket to charge a phone or computer."},
+        {"id": "usb_hub", "description": "An adapter that expands a computer port into several data or display ports."},
+        {"id": "wireless_headphones", "description": "Battery-powered headphones using a wireless audio connection."},
+        {"id": "bluetooth_speaker", "description": "A standalone loudspeaker receiving audio over Bluetooth."},
+        {"id": "wifi_router", "description": "A networking device that distributes an internet connection over Wi-Fi."}
+      ]
+    },
+    {
+      "id": "home_and_kitchen",
+      "description": "Household containers, furnishings, cleaning accessories, and tools specifically for food preparation.",
+      "children": [
+        {"id": "food_container", "description": "A reusable lidded container for storing meals and leftovers."},
+        {"id": "water_bottle", "description": "A reusable drinking vessel with a narrow opening or drinking lid."},
+        {"id": "storage_basket", "description": "An open household basket for organizing belongings on a shelf or floor."},
+        {"id": "laundry_bag", "description": "A fabric sack for collecting or washing clothes, including delicates."},
+        {"id": "kitchen_scale", "description": "A household scale used to weigh ingredients for cooking or baking, including digital scales."},
+        {"id": "cutting_board", "description": "A flat kitchen surface used under food while chopping."}
+      ]
+    }
+  ],
+  "cases": [
+    {"id": "commuter", "text": "A 20-litre city pack with two shoulder straps, padded 15-inch computer pocket, and space for office papers.", "expected": "laptop_backpack"},
+    {"id": "sleeve", "text": "A slim neoprene zip pouch fits tightly around a 13-inch notebook computer. No straps or extra storage.", "expected": "laptop_sleeve"},
+    {"id": "travel", "text": "Cabin luggage with four spinner wheels, a telescoping handle, and a rigid shell.", "expected": "rolling_suitcase"},
+    {"id": "trail", "text": "A 30-litre daypack with an internal frame, load-bearing hip belt, hydration-bladder sleeve, and rain cover for mountain walks.", "expected": "hiking_backpack"},
+    {"id": "waterproof", "text": "A ten-litre sack with welded seams and a roll-and-clip closure keeps spare clothes dry on a kayak.", "expected": "dry_bag"},
+    {"id": "outdoor_cooking", "text": "A folding burner screws onto a gas canister and supports a cooking pot at a campsite.", "expected": "camping_stove"},
+    {"id": "portable_charge", "text": "A pocket-sized rechargeable 20,000 mAh battery with USB-C output recharges a phone away from sockets.", "expected": "power_bank"},
+    {"id": "desk_ports", "text": "A bus-powered USB-C adapter adds HDMI, Ethernet, and three USB data ports to a notebook.", "expected": "usb_hub"},
+    {"id": "travel_audio", "text": "Over-ear Bluetooth cans with noise cancellation and a rechargeable battery, supplied with a carry pouch.", "expected": "wireless_headphones"},
+    {"id": "packed_lunch", "text": "A leak-resistant lidded box for leftovers or a packed meal; suitable for fridge storage.", "expected": "food_container"},
+    {"id": "clothes", "text": "A zippered mesh sack keeps delicate clothes together inside the washing machine; also useful in a suitcase.", "expected": "laundry_bag"},
+    {"id": "ingredients", "text": "A battery-powered digital platform measures flour and sugar in grams while baking.", "expected": "kitchen_scale"}
+  ]
+}

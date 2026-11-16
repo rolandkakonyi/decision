@@ -66,6 +66,12 @@ stay structured. Diagnostics go to stderr; requests are not automatically retrie
 
 ## Response stats
 
+For a complete classification workflow, see the
+[hierarchical classification example](examples/hierarchical/README.md). It
+compares flat, greedy, and bounded two-branch classification on matched labeled
+cases, retaining separate warmups, per-request evidence, accuracy, and total
+latency and token usage.
+
 Every successful query includes input/output token counts and elapsed request
 time, for single questions and mixed batches. Human-readable output ends with:
 
