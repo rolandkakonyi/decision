@@ -35,8 +35,10 @@ types over one image; copy it beside your own `dog.jpg` before running it.
 
 `--image [NAME=]PATH` can be repeated. Images are added under `state.images`,
 keeping existing JSON object fields. Scalar state is retained as `state.context`;
-no text state is required when images are supplied. Unnamed files receive the
-names `image`, `image_2`, etc. Duplicate names fail explicitly.
+no text state is required when images are supplied. Unnamed images are named
+by flag position: `image`, `image_2`, and so on. For example,
+`--image dog=dog.jpg --image photo.png` names the second image `image_2`.
+Duplicate names fail explicitly.
 
 Batch JSON also accepts an `assets` map. Use unique references in state,
 question instructions, or criteria:

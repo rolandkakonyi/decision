@@ -1,22 +1,72 @@
 # CLI and batches
 
-## Ask several questions together
+## Questions and batches
+
+Ask a single question with its matching command:
 
 ```bash
-decision run request.json
-decision run request.json --json
-decision ask --state-file state.json --questions-file questions.json
-decision noul 'Does this request a refund?' --state 'Please refund my order.'
+decision choice 'Which team should handle this message?' \
+  --state 'I was charged twice.' \
+  --option billing='Payments and refunds' \
+  --option technical='Bugs and integrations'
+
+decision score 'How urgent is this issue?' \
+  --state 'The service is unavailable for all customers.' \
+  --level 'Can wait' --level 'Needs attention soon' --level 'Needs immediate attention'
 ```
 
-A request has one `state` and a `questions` object keyed by question IDs.
-Each question specifies `type` (`noul`, `choice`, `score`, or `box`),
-`instructions`, and any `criteria`. Mixed questions sharing state are sent in
-one provider request, and answers retain their IDs. See
-[examples/request.json](https://github.com/rolandkakonyi/decision/blob/main/examples/request.json). `--dry-run` validates without
-inference. Human-readable output is the default, including when piped. Add
-`--json` before or after a query command to force JSON for scripts. MCP responses
-stay structured. Diagnostics go to stderr; requests are not automatically retried.
+Choice returns one of the offered option keys. Include an `other` option when
+none of the named options may apply. Score levels run from lowest to highest,
+with a numeric score from 0 to the number of levels minus one. Scores may be
+fractional; `legend` maps zero-based level keys to their descriptions.
+
+For several questions about the same evidence, save a request as `request.json`:
+
+```json
+{
+  "state": {"message": "I was charged twice. Please refund the extra payment."},
+  "questions": {
+    "refund": {
+      "type": "noul",
+      "instructions": "Does the customer request a refund?"
+    },
+    "team": {
+      "type": "choice",
+      "instructions": "Which team handles this message?",
+      "criteria": {
+        "billing": "Payments and refunds",
+        "technical": "Bugs and integrations"
+      }
+    },
+    "blocking": {
+      "type": "score",
+      "instructions": "How much does the problem block the customer?",
+      "criteria": [
+        "Can continue normally",
+        "Can continue with inconvenience",
+        "Cannot continue"
+      ]
+    }
+  }
+}
+```
+
+```bash
+decision run request.json --json
+```
+
+Questions share `state` and retain their IDs in the answers. They are evaluated
+independently in one provider request; use the returned answers to make any
+conditional decisions. Add `--dry-run` to validate and preview the request.
+Use `decision run -` to read a request from stdin, or keep evidence and questions
+in separate files with `decision ask --state-file state.json --questions-file questions.json`.
+
+Decision validates the entire response before returning a batch. Missing or
+invalid answers fail the batch without partial results. Choice and Score
+probability maps must include every offered option and total 1 within 0.02.
+Requests are not automatically retried, redirected, or sent to a fallback provider.
+`--timeout SECONDS` limits query execution (default: 30 seconds); expiration
+reports a provider failure without answers.
 
 
 ## Response stats

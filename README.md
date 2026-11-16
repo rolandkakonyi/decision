@@ -1,14 +1,24 @@
 ![decision: typed judgments via CLI and MCP on text and images](docs/assets/decision-banner.png)
 
-# decision
+# Decision
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/rolandkakonyi/decision)](https://github.com/rolandkakonyi/decision/releases/latest)
 
-Typed judgments over text and images through one native CLI and STDIO MCP server.
-Ask for a yes probability (**Noul**), named choices (**Choice**), ordered ratings
-(**Score**), or image bounding boxes (**Box**, TypeSafe only). Built-in providers
-are TypeSafe, OpenAI Decisions, Gemini Decisions, and Cloudflare Clef/Clef Flash.
+Ask typed questions about text, JSON, and images from your terminal or AI agent.
+Decision connects to TypeSafe Jev, OpenAI Decisions, Gemini Decisions, and
+Cloudflare Clef through one request format and a common answer format.
+Route support messages, score urgency, or locate objects using constrained
+answers that scripts can validate.
+
+- **Noul (yes/no probability):** estimate the probability that a statement is true.
+- **Choice:** select from named options, with probabilities for each.
+- **Score:** rate evidence against ordered levels.
+- **Box:** locate a region in an image (TypeSafe only).
+
+Batch questions over shared evidence in one provider request. Use readable CLI
+output, JSON for scripts, or the embedded STDIO MCP server. Extend the available
+providers with executable plugins written in any language.
 
 [Documentation](https://rolandkakonyi.github.io/decision/) ·
 [Quickstart](docs/quickstart.md) ·
@@ -29,7 +39,7 @@ executable needs no Python or uv runtime. See the
 ## Try it without credentials
 
 ```bash
-decision noul 'Is this a greeting?' --state 'Hello' --dry-run
+decision noul 'Does this request a refund?' --state 'Please refund my order.' --dry-run
 ```
 
 Dry runs validate locally without inference. For live queries, configure your

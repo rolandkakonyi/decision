@@ -58,12 +58,27 @@ the new release.
 Validate a request without credentials or inference:
 
 ```bash
-decision noul 'Is this a greeting?' --state 'Hello' --dry-run
+decision noul 'Does this request a refund?' --state 'Please refund my order.' --dry-run
 ```
 
-For live queries, configure your selected provider's API key and omit
-`--dry-run`. See [provider settings](providers.md) for credentials,
-default models, and supported question types. Inference is billed by the provider.
+TypeSafe is the default provider. For this walkthrough, export `OPENAI_API_KEY`
+into your environment and select OpenAI for the current shell:
+
+```bash
+# Requires OPENAI_API_KEY in the environment.
+export DECISION_PROVIDER=openai
+decision noul 'Does this request a refund?' --state 'Please refund my order.'
+```
+
+No model flag is required: each built-in provider has a default model.
+[Provider configuration](providers.md) lists credentials and defaults.
+Decision does not load `.env` files automatically. Inference is billed by the
+selected provider.
+`--provider NAME` overrides the shell setting for a single command.
+
+Human-readable output is the default, including when piped. Add `--json` before
+or after a query command for structured output. Diagnostics go to stderr.
+Use `decision --help` or `decision COMMAND --help` for available options.
 
 Executable providers are available with the same native installation. Use
 [`decision providers install`](installed-providers.md) to add a trusted

@@ -44,7 +44,8 @@ Supported by all four built-in providers. Their option limits differ.
 
 Define levels in order, starting at 0. The response includes level probabilities,
 an expected score that can lie between levels, and confidence. Use concrete
-descriptions to make your rubric clear.
+descriptions to make your rubric clear. The `legend` maps zero-based level
+keys to their descriptions.
 
 ```bash
 decision score 'How urgent is the request?' --state 'Please reply today.' \
