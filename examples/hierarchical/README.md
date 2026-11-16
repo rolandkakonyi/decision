@@ -147,6 +147,67 @@ uv run --locked python examples/hierarchical/prepare_shopify.py \
   --categories /path/to/categories.txt --output /tmp/shopify.json
 ```
 
+## Existing labels on real listings
+
+[WDC-222](https://data.dws.informatik.uni-mannheim.de/largescaleproductcorpus/categorization/)
+provides 2,984 archived shop offers assigned to 222 Icecat leaf categories.
+Its native category IDs and full paths provide the comparison taxonomy, with
+17 departments below Computers & Electronics. These labels were assigned by
+the dataset creators using product-identifier matching and review, rather than
+generated for this example. No Shopify remapping is involved. Agreement is
+measured against the supplied labels, which can still contain noise.
+
+[prepare_wdc.py](prepare_wdc.py) verifies a pinned source SHA-256, selects one
+offer per existing category, then fills to 256 products using a fixed hash
+order. GTINs, product clusters, and title/description input text are unique
+within the sample. This is a category-covering sample, not a traffic-weighted
+sample. Sampling is fixed before inference; labels are not rewritten based on
+model answers. The script writes a separate manifest with original row IDs,
+GTINs, clusters, labels, selection settings, and hashes for audit.
+
+Only the supplied `title` and `desc` fields are passed to the classifier, with
+simple field delimiters. Empty descriptions stay empty; source text is not
+rewritten or truncated. URLs, identifiers, category fields, and source hierarchy
+paths attached to individual offers are excluded from product input. The
+category choices remain available equally to both strategies. The corpus text
+was normalized by its publishers and can include sparse or mixed-language
+listings. Source downloads, prepared offers, manifests, and result traces stay
+in `.state/`; listing text is not vendored into this repository.
+
+Download the `SOURCE` URL declared in the preparation script, then prepare the
+sample locally:
+
+```bash
+uv run --locked python examples/hierarchical/prepare_wdc.py \
+  --source .state/real-listings/wdc_data_full.json \
+  --output .state/real-listings/request.json
+```
+
+To compare only flat and two-branch on an authorized Gemini account:
+
+```bash
+target/debug/examples/hierarchical \
+  --decision target/debug/decision \
+  --provider gemini --model gemini-decision-1 \
+  --data .state/real-listings/request.json --strategies flat,two-branch \
+  --warmups 1 --warmup-cases 8 --rounds 1 \
+  --max-calls 1056 --max-input-tokens 35000000 \
+  --context 'Same laptop, sequential requests, idle workload, Wi-Fi' \
+  > .state/real-listings/results.json
+```
+
+The eight warmup cases are excluded from the summary. One measured round gives
+one prediction per strategy for each of 256 distinct products; it estimates
+label agreement without treating repetitions as additional products. The full
+222-category flat baseline fits in one Choice request. Two-branch uses three
+requests, batching its two independent department-level leaf questions.
+With this sample, the invocation uses 1,056 requests including warmups.
+
+`--strategies` must contain unique entries and include `flat`, which owns the
+paired baseline. The default remains all three strategies. Use additional
+rounds when measuring run-to-run variability. A one-pass quality evaluation
+provides descriptive latency measurements, not proof of a general speedup.
+
 ## Read the comparison
 
 ```bash
@@ -156,8 +217,10 @@ jq '{complete, provider_attempts, summary: [.summary[] | del(.paired_with_flat)]
 
 Every case runs under every strategy on the same host, with the same explicit
 provider/model and product text. Strategy order rotates across cases and
-rounds. One or more warmup rounds run first; at least five measured rounds
-follow. Warmup results remain in `runs` but are excluded from `summary`.
+rounds. One or more warmup rounds run first, using every case unless
+`--warmup-cases` limits them. Five measured rounds are the default; a single
+round is useful when prioritizing distinct labeled products in a quality
+evaluation. Warmup results remain in `runs` but are excluded from `summary`.
 
 The summary reports accuracy, request count, input/output token totals, summed
 provider duration, and wall time per complete classification. Wall time includes

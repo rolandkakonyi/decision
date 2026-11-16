@@ -21,8 +21,10 @@ struct Args {
     model: String,
     data: Option<PathBuf>,
     sizes: Vec<usize>,
+    strategies: Vec<Strategy>,
     rounds: u32,
     warmups: u32,
+    warmup_cases: Option<usize>,
     max_calls: u32,
     max_input_tokens: Option<u64>,
     context: String,
@@ -39,8 +41,10 @@ impl Args {
             .arg(Arg::new("model").long("model").required(true))
             .arg(Arg::new("data").long("data").value_parser(clap::value_parser!(PathBuf)))
             .arg(Arg::new("sizes").long("sizes").value_delimiter(',').value_parser(clap::value_parser!(u32).range(2..)).action(clap::ArgAction::Append).help("Nested candidate counts, e.g. 128,255,1024; all labeled targets are retained"))
-            .arg(Arg::new("rounds").long("rounds").default_value("5").value_parser(clap::value_parser!(u32).range(5..)))
+            .arg(Arg::new("strategies").long("strategies").value_delimiter(',').action(clap::ArgAction::Append).value_parser(["flat","greedy","two-branch"]).default_values(["flat","greedy","two-branch"]).help("Strategies to compare; flat is required as the matched baseline"))
+            .arg(Arg::new("rounds").long("rounds").default_value("5").value_parser(clap::value_parser!(u32).range(1..)))
             .arg(Arg::new("warmups").long("warmups").default_value("1").value_parser(clap::value_parser!(u32).range(1..)))
+            .arg(Arg::new("warmup-cases").long("warmup-cases").value_parser(clap::value_parser!(u32).range(1..)).help("Cases per warmup round; default: entire dataset"))
             .arg(Arg::new("max-calls").long("max-calls").required(true).value_parser(clap::value_parser!(u32).range(1..)).help("Maximum provider attempts including warmups and failures; no retries"))
             .arg(Arg::new("max-input-tokens").long("max-input-tokens").value_parser(clap::value_parser!(u64).range(1..)).help("Stop before another call once reported input tokens reach this total; one call can overshoot"))
             .arg(Arg::new("context").long("context").required(true).help("Host/load notes recorded with results, e.g. laptop idle, Wi-Fi"))
@@ -56,8 +60,19 @@ impl Args {
                 .flatten()
                 .map(|n| *n as usize)
                 .collect(),
+            strategies: matches
+                .get_many::<String>("strategies")
+                .unwrap()
+                .map(|name| match name.as_str() {
+                    "flat" => Strategy::Flat,
+                    "greedy" => Strategy::Greedy,
+                    "two-branch" => Strategy::TwoBranch,
+                    _ => unreachable!(),
+                })
+                .collect(),
             rounds: *matches.get_one::<u32>("rounds").unwrap(),
             warmups: *matches.get_one::<u32>("warmups").unwrap(),
+            warmup_cases: matches.get_one::<u32>("warmup-cases").map(|n| *n as usize),
             max_calls: *matches.get_one::<u32>("max-calls").unwrap(),
             max_input_tokens: matches.get_one::<u64>("max-input-tokens").copied(),
             context: matches.get_one::<String>("context").unwrap().clone(),
@@ -190,6 +205,7 @@ enum Strategy {
     Greedy,
     TwoBranch,
 }
+#[cfg(test)]
 const STRATEGIES: [Strategy; 3] = [Strategy::Flat, Strategy::Greedy, Strategy::TwoBranch];
 
 fn selected(answer: &Value) -> Result<String> {
@@ -346,10 +362,15 @@ fn experiment(
         .collect();
     'experiment: for (phase, rounds) in [("warmup", args.warmups), ("measured", args.rounds)] {
         for round in 0..rounds {
-            for (case_index, case) in data.cases.iter().enumerate() {
-                for offset in 0..STRATEGIES.len() {
-                    let strategy =
-                        STRATEGIES[(round as usize + case_index + offset) % STRATEGIES.len()];
+            let case_count = if phase == "warmup" {
+                args.warmup_cases.unwrap_or(data.cases.len())
+            } else {
+                data.cases.len()
+            };
+            for (case_index, case) in data.cases.iter().take(case_count).enumerate() {
+                for offset in 0..args.strategies.len() {
+                    let strategy = args.strategies
+                        [(round as usize + case_index + offset) % args.strategies.len()];
                     let mut calls = Vec::new();
                     let started = Instant::now();
                     let result = classify(data, strategy, |menus| {
@@ -438,7 +459,7 @@ fn experiment(
     let calls: Vec<_> = runs.iter().flat_map(|r| &r.calls).collect();
     json!({"complete":failure.is_none(),"error":failure,"provider_attempts":budget.attempts-initial_attempts,"effective_model":budget.effective_model,
         "usage_including_warmups":{"input_tokens":token_total(&calls,"input_tokens"),"output_tokens":token_total(&calls,"output_tokens")},
-        "summary":if failure.is_none() {summary(&runs)} else {Value::Null}, "runs":runs})
+        "summary":if failure.is_none() {summary(&runs,&args.strategies)} else {Value::Null}, "runs":runs})
 }
 
 fn token_total(calls: &[&Call], key: &str) -> Option<u64> {
@@ -447,8 +468,8 @@ fn token_total(calls: &[&Call], key: &str) -> Option<u64> {
     })
 }
 
-fn summary(runs: &[Run]) -> Value {
-    Value::Array(STRATEGIES.iter().map(|strategy| {
+fn summary(runs: &[Run], strategies: &[Strategy]) -> Value {
+    Value::Array(strategies.iter().map(|strategy| {
         let measured: Vec<_> = runs.iter().filter(|r| r.phase == "measured" && r.strategy == *strategy).collect();
         let calls: Vec<_> = measured.iter().flat_map(|r| &r.calls).collect();
         let mut times: Vec<_> = measured.iter().map(|r| r.wall_ms).collect();
@@ -507,6 +528,15 @@ fn invoke(args: &Args, request: &Value) -> Result<Value> {
 
 fn run() -> Result<bool> {
     let args = Args::parse_from(std::env::args_os());
+    if !args.strategies.contains(&Strategy::Flat)
+        || args
+            .strategies
+            .iter()
+            .enumerate()
+            .any(|(index, strategy)| args.strategies[..index].contains(strategy))
+    {
+        return Err("Strategies must be unique and include flat as the baseline".into());
+    }
     let text = match &args.data {
         Some(path) => std::fs::read_to_string(path).map_err(|_| "Cannot read dataset")?,
         None => DATA.to_owned(),
@@ -547,7 +577,8 @@ fn run() -> Result<bool> {
         "decision_version":String::from_utf8_lossy(&version.stdout).trim(),
         "provider":args.provider,"model":args.model,"os":std::env::consts::OS,"arch":std::env::consts::ARCH,
         "context":args.context,"started_unix_seconds":started,
-        "warmup_rounds":args.warmups,"measured_rounds":args.rounds,"max_calls":args.max_calls,"max_input_tokens":args.max_input_tokens});
+        "strategies":args.strategies,"warmup_rounds":args.warmups,"warmup_cases_per_round":args.warmup_cases.unwrap_or(data.cases.len()).min(data.cases.len()),
+        "measured_rounds":args.rounds,"max_calls":args.max_calls,"max_input_tokens":args.max_input_tokens});
         report["dataset"] = serde_json::to_value(data).unwrap();
         let complete = report["complete"] == true;
         reports.push(report);
@@ -899,5 +930,50 @@ mod tests {
             assert_eq!(calls, if size > 255 { 2 } else { 1 });
             assert_eq!(batches, if size > 255 { vec![5, 1] } else { vec![1] });
         }
+    }
+
+    #[test]
+    fn selected_strategies_and_small_warmup_do_not_spend_on_greedy() {
+        let args = Args::parse_from([
+            "hierarchical",
+            "--provider",
+            "gemini",
+            "--model",
+            "fixture",
+            "--max-calls",
+            "1000",
+            "--context",
+            "local fixture",
+            "--strategies",
+            "flat,two-branch",
+            "--rounds",
+            "1",
+            "--warmup-cases",
+            "2",
+        ]);
+        assert_eq!(args.strategies, vec![Strategy::Flat, Strategy::TwoBranch]);
+        let report = experiment(&data(), &args, &mut Budget::default(), response_ok);
+        assert_eq!(report["complete"], true);
+        assert_eq!(report["provider_attempts"], 56);
+        assert_eq!(report["runs"].as_array().unwrap().len(), 28);
+        assert_eq!(
+            report["runs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["phase"] == "warmup")
+                .count(),
+            4
+        );
+        assert_eq!(report["summary"].as_array().unwrap().len(), 2);
+        assert!(
+            report["runs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["strategy"] != "greedy")
+        );
+        assert_eq!(report["summary"][0]["classifications"], 12);
+        assert_eq!(report["summary"][1]["classifications"], 12);
     }
 }

@@ -4,6 +4,7 @@ import base64
 import json
 from pathlib import Path
 import re
+import runpy
 import shlex
 import shutil
 import tempfile
@@ -15,6 +16,32 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 
 
 class DocumentedExamplesTests(unittest.TestCase):
+    def test_wdc_preparation_keeps_labels_and_deduplicates_products(self):
+        prepare = runpy.run_path(str(Path(__file__).resolve().parents[1] / "examples/hierarchical/prepare_wdc.py"))["prepare"]
+        fields = {name: {} for name in ("CategoryID", "CategoryName", "pathlist_ids", "pathlist_names", "title", "desc", "gtin", "cluster_id")}
+        for index in range(5):
+            product = min(index, 3)
+            row = str(index)
+            values = (f"leaf{product}", f"Class {product}", ["root", f"group{product//2}", f"leaf{product}"],
+                      ["Catalog", f"Department {product//2}", f"Class {product}"], f"SKU {product}",
+                      None if product == 0 else f"Merchant text {product}", str(1000+product), product)
+            for name, value in zip(fields, values):
+                fields[name][row] = value
+        source = json.dumps(fields)
+        data, manifest = prepare(source, 4)
+        self.assertEqual(prepare(source, 4), (data, manifest))
+        self.assertEqual(len(data["cases"]), 4)
+        self.assertEqual(len({row["gtin"] for row in manifest["selected"]}), 4)
+        self.assertEqual(len({row["cluster_id"] for row in manifest["selected"]}), 4)
+        self.assertEqual({row["expected"] for row in data["cases"]}, {f"leaf{i}" for i in range(4)})
+        for case, selected in zip(data["cases"], manifest["selected"]):
+            row = selected["source_row_id"]
+            self.assertEqual(case["expected"], fields["CategoryID"][row])
+            self.assertEqual(case["text"], "Title: " + fields["title"][row] + "\nDescription: " + (fields["desc"][row] or ""))
+        fields["pathlist_names"]["0"][-1] = "Conflicting category"
+        with self.assertRaises(ValueError):
+            prepare(json.dumps(fields), 4)
+
     def test_all_documented_query_commands_validate_without_inference(self):
         with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
             root = Path(directory)
