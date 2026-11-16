@@ -4,7 +4,7 @@ site_url = "https://rolandkakonyi.github.io/decision/"
 site_description = "Typed judgments over text and images. One CLI, a STDIO MCP server, and pluggable AI providers."
 repo_url = "https://github.com/rolandkakonyi/decision"
 repo_name = "rolandkakonyi/decision"
-docs_dir = ".state/docs"
+docs_dir = "docs"
 site_dir = ".state/site"
 extra_css = ["assets/decision.css"]
 nav = [
@@ -16,24 +16,27 @@ nav = [
   { "Use Decision" = [
     { "CLI and batches" = "cli.md" },
     { "Images and bounding boxes" = "images.md" },
-    { "Provider configuration" = "providers.md" },
-    { "Worked examples" = "examples.md" },
+    { "Built-in providers" = "providers.md" },
+  ] },
+  { "Provider plugins" = [
+    { "Install and manage providers" = "installed-providers.md" },
+    { "Write an executable provider" = "provider-plugins.md" },
+    { "Providers and Codex exports" = "extensions.md" },
   ] },
   { "Connect an agent" = [
-    { "MCP server" = "mcp.md" },
+    { "Inference MCP" = "mcp.md" },
+    { "Management MCP" = "mcp-management.md" },
     { "Codex plugin and Agent Skill" = "agent-integrations.md" },
     { "Plugin export reference" = "plugin-reference.md" },
   ] },
-  { "Extend and reference" = [
-    { "Write a provider extension" = "provider-plugins.md" },
+  { "Reference" = [
+    { "Worked examples" = "examples.md" },
     { "Command reference" = "command-reference.md" },
-    { "Request schema" = "schema.md" },
-    { "Agent Skill reference" = "skill-reference.md" },
+    { "Request and response schemas" = "schema.md" },
   ] },
   { "Project" = [
     { "Standalone builds" = "standalone.md" },
-    { "Development" = "development.md" },
-    { "Contributing" = "contributing.md" },
+    { "Contributing" = "https://github.com/rolandkakonyi/decision/blob/main/CONTRIBUTING.md" },
     { "Releases" = "https://github.com/rolandkakonyi/decision/releases" },
     { "Security" = "https://github.com/rolandkakonyi/decision/security/policy" },
   ] },
@@ -79,6 +82,12 @@ toc.permalink = true
 pymdownx.highlight.pygments_lang_class = true
 pymdownx.superfences = {}
 pymdownx.tabbed.alternate_style = true
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+
+[project.validation]
+invalid_links = true
+invalid_link_anchors = true
 
 [project.extra]
 generator = false

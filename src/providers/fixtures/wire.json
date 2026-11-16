@@ -1,0 +1,425 @@
+[
+  {
+    "provider": "openai",
+    "request": {
+      "state": {
+        "images": {
+          "first": "<é photo>",
+          "second": "<other>"
+        },
+        "large": 9007199254740993,
+        "nested": [
+          false,
+          {
+            "a": "é"
+          }
+        ]
+      },
+      "questions": {
+        "present": {
+          "type": "noul",
+          "instructions": "Is a dog visible?",
+          "criteria": {
+            "true": {
+              "meaning": "é dog visible",
+              "weights": [
+                1e-05,
+                1e+16,
+                false,
+                null
+              ]
+            },
+            "false": null
+          }
+        },
+        "breed": {
+          "type": "choice",
+          "instructions": "Which breed?",
+          "criteria": {
+            "french": null,
+            "english": {
+              "breed": "English bulldog",
+              "rank": 9007199254740993
+            }
+          }
+        },
+        "visible": {
+          "type": "score",
+          "instructions": "How visible?",
+          "criteria": [
+            "Hidden",
+            {
+              "visible": [
+                "é",
+                true,
+                1e-05
+              ]
+            }
+          ]
+        }
+      },
+      "assets": {
+        "<é photo>": {
+          "type": "image",
+          "format": "png",
+          "data_base64": "iVBORw0KGgpmaXh0dXJl"
+        },
+        "<other>": {
+          "type": "image",
+          "format": "jpeg",
+          "data_base64": "/9j/Zml4dHVyZQ=="
+        }
+      }
+    },
+    "expected": {
+      "model": "gpt-6-luna",
+      "input": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_json",
+              "data": {
+                "images": {
+                  "first": "<é photo>",
+                  "second": "<other>"
+                },
+                "large": 9007199254740993,
+                "nested": [
+                  false,
+                  {
+                    "a": "é"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "input_text",
+              "text": "Image reference (JSON string): \"<\\u00e9 photo>\""
+            },
+            {
+              "type": "input_image",
+              "image_url": "data:image/png;base64,iVBORw0KGgpmaXh0dXJl"
+            },
+            {
+              "type": "input_text",
+              "text": "Image reference (JSON string): \"<other>\""
+            },
+            {
+              "type": "input_image",
+              "image_url": "data:image/jpeg;base64,/9j/Zml4dHVyZQ=="
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "name": "present",
+          "type": "predicate",
+          "instructions": "Is a dog visible?\nInterpret true and false using these criteria (JSON): {\"true\": {\"meaning\": \"é dog visible\", \"weights\": [1e-05, 1e+16, false, null]}, \"false\": null}"
+        },
+        {
+          "name": "breed",
+          "type": "choice",
+          "instructions": "Which breed?",
+          "choices": [
+            {
+              "value": "french"
+            },
+            {
+              "value": "english",
+              "description": "{\"breed\": \"English bulldog\", \"rank\": 9007199254740993}"
+            }
+          ]
+        },
+        {
+          "name": "visible",
+          "type": "score",
+          "instructions": "How visible?",
+          "levels": [
+            {
+              "label": "0",
+              "description": "Hidden"
+            },
+            {
+              "label": "1",
+              "description": "{\"visible\": [\"é\", true, 1e-05]}"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "provider": "cloudflare",
+    "request": {
+      "state": {
+        "images": {
+          "first": "<é photo>",
+          "second": "<other>"
+        },
+        "large": 9007199254740993,
+        "nested": [
+          false,
+          {
+            "a": "é"
+          }
+        ]
+      },
+      "questions": {
+        "present": {
+          "type": "noul",
+          "instructions": "Is a dog visible?",
+          "criteria": {
+            "true": {
+              "meaning": "é dog visible",
+              "weights": [
+                1e-05,
+                1e+16,
+                false,
+                null
+              ]
+            },
+            "false": null
+          }
+        },
+        "breed": {
+          "type": "choice",
+          "instructions": "Which breed?",
+          "criteria": {
+            "french": null,
+            "english": {
+              "breed": "English bulldog",
+              "rank": 9007199254740993
+            }
+          }
+        },
+        "visible": {
+          "type": "score",
+          "instructions": "How visible?",
+          "criteria": [
+            "Hidden",
+            {
+              "visible": [
+                "é",
+                true,
+                1e-05
+              ]
+            }
+          ]
+        }
+      },
+      "assets": {
+        "<é photo>": {
+          "type": "image",
+          "format": "png",
+          "data_base64": "iVBORw0KGgpmaXh0dXJl"
+        },
+        "<other>": {
+          "type": "image",
+          "format": "jpeg",
+          "data_base64": "/9j/Zml4dHVyZQ=="
+        }
+      }
+    },
+    "expected": {
+      "model": "clef",
+      "state": {
+        "images": {
+          "first": "<é photo>",
+          "second": "<other>"
+        },
+        "large": 9007199254740993,
+        "nested": [
+          false,
+          {
+            "a": "é"
+          }
+        ],
+        "_decision_image_references": [
+          {
+            "reference": "<é photo>",
+            "image_position_1_based": 1
+          },
+          {
+            "reference": "<other>",
+            "image_position_1_based": 2
+          }
+        ]
+      },
+      "questions": {
+        "present": {
+          "type": "noul",
+          "instructions": "Is a dog visible?",
+          "criteria": {
+            "true": {
+              "meaning": "é dog visible",
+              "weights": [
+                1e-05,
+                1e+16,
+                false,
+                null
+              ]
+            },
+            "false": null
+          }
+        },
+        "breed": {
+          "type": "choice",
+          "instructions": "Which breed?",
+          "criteria": {
+            "french": null,
+            "english": {
+              "breed": "English bulldog",
+              "rank": 9007199254740993
+            }
+          }
+        },
+        "visible": {
+          "type": "score",
+          "instructions": "How visible?",
+          "criteria": [
+            "Hidden",
+            {
+              "visible": [
+                "é",
+                true,
+                1e-05
+              ]
+            }
+          ]
+        }
+      },
+      "images": [
+        "data:image/png;base64,iVBORw0KGgpmaXh0dXJl",
+        "data:image/jpeg;base64,/9j/Zml4dHVyZQ=="
+      ]
+    }
+  },
+  {
+    "provider": "gemini",
+    "request": {
+      "state": {
+        "images": {
+          "first": "<é photo>",
+          "second": "<other>"
+        },
+        "large": 9007199254740993,
+        "nested": [
+          false,
+          {
+            "a": "é"
+          }
+        ]
+      },
+      "questions": {
+        "present": {
+          "type": "noul",
+          "instructions": "Is a dog visible?",
+          "criteria": {
+            "true": {
+              "meaning": "é dog visible",
+              "weights": [
+                1e-05,
+                1e+16,
+                false,
+                null
+              ]
+            },
+            "false": null
+          }
+        },
+        "breed": {
+          "type": "choice",
+          "instructions": "Which breed?",
+          "criteria": {
+            "french": null,
+            "english": {
+              "breed": "English bulldog",
+              "rank": 9007199254740993
+            }
+          }
+        },
+        "visible": {
+          "type": "score",
+          "instructions": "How visible?",
+          "criteria": [
+            "Hidden",
+            {
+              "visible": [
+                "é",
+                true,
+                1e-05
+              ]
+            }
+          ]
+        }
+      },
+      "assets": {
+        "<é photo>": {
+          "type": "image",
+          "format": "png",
+          "data_base64": "iVBORw0KGgpmaXh0dXJl"
+        },
+        "<other>": {
+          "type": "image",
+          "format": "jpeg",
+          "data_base64": "/9j/Zml4dHVyZQ=="
+        }
+      }
+    },
+    "expected": {
+      "model": "gemini-decision-1",
+      "input": [
+        {
+          "type": "text",
+          "text": "{\"images\": {\"first\": \"<é photo>\", \"second\": \"<other>\"}, \"large\": 9007199254740993, \"nested\": [false, {\"a\": \"é\"}]}"
+        },
+        {
+          "type": "text",
+          "text": "Image reference (JSON string): \"<\\u00e9 photo>\""
+        },
+        {
+          "type": "image",
+          "data": "iVBORw0KGgpmaXh0dXJl",
+          "mime_type": "image/png"
+        },
+        {
+          "type": "text",
+          "text": "Image reference (JSON string): \"<other>\""
+        },
+        {
+          "type": "image",
+          "data": "/9j/Zml4dHVyZQ==",
+          "mime_type": "image/jpeg"
+        }
+      ],
+      "questions": {
+        "present": {
+          "type": "noul",
+          "instructions": "Is a dog visible?",
+          "criteria": {
+            "true_description": "{\"meaning\": \"é dog visible\", \"weights\": [1e-05, 1e+16, false, null]}",
+            "false_description": ""
+          }
+        },
+        "breed": {
+          "type": "choice",
+          "instructions": "Which breed?",
+          "criteria": {
+            "french": "",
+            "english": "{\"breed\": \"English bulldog\", \"rank\": 9007199254740993}"
+          }
+        },
+        "visible": {
+          "type": "score",
+          "instructions": "How visible?",
+          "criteria": [
+            "Hidden",
+            "{\"visible\": [\"é\", true, 1e-05]}"
+          ]
+        }
+      }
+    }
+  }
+]

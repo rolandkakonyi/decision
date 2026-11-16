@@ -1,69 +1,90 @@
-"""Execute generated and site examples without provider calls."""
+"""Execute the native generator's user-facing examples without provider calls."""
 
-from contextlib import chdir, redirect_stdout
-import io
+import base64
 import json
-import os
 from pathlib import Path
 import re
 import shlex
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
 
-from decision_cli import cli
-from test_images import png_bytes
+from native import invoke, response_server
 
-REFERENCES = Path(__file__).resolve().parents[1] / "skills/decision/references"
-SITE_DOCS = Path(__file__).resolve().parents[1] / "docs/site"
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6y8AAAAASUVORK5CYII=")
 
 
 class DocumentedExamplesTests(unittest.TestCase):
-    def setUp(self):
-        environment = patch.dict(os.environ, {}, clear=True)
-        environment.start()
-        self.addCleanup(environment.stop)
+    def test_site_query_commands_validate_without_inference(self):
+        docs = Path(__file__).resolve().parents[1] / "docs"
+        homepage = (docs / "index.md").read_text(encoding="utf-8")
+        sample = json.loads(re.search(r"```json\n(.*?)```", homepage, re.S).group(1))
+        commands = []
+        query_commands = {"noul", "choice", "score", "box", "ask", "run"}
+        for path in sorted(docs.glob("*.md")):
+            for block in re.findall(r"```bash\n(.*?)```", path.read_text(encoding="utf-8"), re.S):
+                for line in block.replace("\\\n", "").strip().splitlines():
+                    command = shlex.split(line)
+                    if len(command) > 1 and command[0] == "decision" and command[1] in query_commands:
+                        commands.append((path.name, command[1:]))
+        self.assertTrue(commands, "No site query examples found")
+        with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
+            root = Path(directory)
+            exported = root / "skill"
+            result = invoke("skill", "--output", exported)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for path in (exported / "references").glob("*.json"):
+                shutil.copyfile(path, root / path.name)
+            (root / "request.json").write_text(json.dumps(sample), encoding="utf-8")
+            (root / "state.json").write_text(json.dumps(sample["state"]), encoding="utf-8")
+            (root / "questions.json").write_text(json.dumps(sample["questions"]), encoding="utf-8")
+            for name in ("dog.jpg", "before.jpg", "after.jpg", "photo.png"):
+                (root / name).write_bytes(PNG)
+            for page, args in commands:
+                with self.subTest(page=page, command=args):
+                    for flag in ("--dry-run", "--json"):
+                        if flag not in args:
+                            args.append(flag)
+                    result = invoke(*args, cwd=root, env={"DECISION_BASE_URL": url})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertTrue(json.loads(result.stdout)["questions"])
+                    self.assertEqual(requests, [], "A site dry run contacted the provider")
 
     def test_all_documented_query_commands_validate_without_inference(self):
-        homepage = (SITE_DOCS / "index.md").read_text()
-        guide = "\n".join(((REFERENCES / "examples.md").read_text(),
-                           homepage, (SITE_DOCS / "concepts.md").read_text()))
-        commands = []
-        for block in re.findall(r"```bash\n(.*?)```", guide, re.S):
-            commands.extend(shlex.split(line) for line in block.replace("\\\n", "").strip().splitlines()
-                            if line.strip() and not line.startswith("brew "))
-        self.assertTrue(commands, "No executable examples found")
-        seen_commands, seen_types = set(), set()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
             root = Path(directory)
-            request = json.loads(re.search(r"```json\n(.*?)```", homepage, re.S).group(1))
-            (root / "request.json").write_text(json.dumps(request))
+            exported = root / "skill"
+            result = invoke("skill", "--output", exported)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            references = exported / "references"
+            guide = (references / "examples.md").read_text(encoding="utf-8")
+            commands = []
+            for block in re.findall(r"```bash\n(.*?)```", guide, re.S):
+                commands.extend(shlex.split(line) for line in block.replace("\\\n", "").strip().splitlines() if line.strip())
+            self.assertTrue(commands, "No executable examples found")
+            seen_commands, seen_types = set(), set()
             for name in ("dog.jpg", "before.jpg", "after.jpg"):
-                (root / name).write_bytes(png_bytes())
-            for name in ("dog-request.json", "dog-questions.json",
-                         "dog-mixed-request.json", "dog-mixed-questions.json",
-                         "openai-dog-request.json", "openai-dog-questions.json",
-                         "cloudflare-dog-request.json", "cloudflare-dog-questions.json",
-                         "gemini-dog-request.json", "gemini-dog-questions.json"):
-                shutil.copyfile(REFERENCES / name, root / name)
-            with chdir(root), patch.object(cli, "evaluate_request", side_effect=AssertionError("Examples must never call a provider")):
-                for command in commands:
-                    with self.subTest(command=command):
-                        self.assertEqual(command[0], "decision")
-                        args = command[1:]
-                        seen_commands.add(args[0])
-                        for flag in ("--dry-run", "--json"):
-                            if flag not in args:
-                                args.append(flag)
-                        output = io.StringIO()
-                        with redirect_stdout(output):
-                            self.assertEqual(cli.main(args), 0)
-                        request = json.loads(output.getvalue())
-                        self.assertTrue(request["questions"])
-                        seen_types.update(q["type"] for q in request["questions"].values())
-        self.assertTrue({"choice", "noul", "score", "box", "ask", "run"} <= seen_commands)
-        self.assertEqual(seen_types, {"choice", "noul", "score", "box"})
+                (root / name).write_bytes(PNG)
+            for name in ("dog-request.json", "dog-questions.json", "dog-mixed-request.json", "dog-mixed-questions.json",
+                         "openai-dog-request.json", "openai-dog-questions.json", "cloudflare-dog-request.json",
+                         "cloudflare-dog-questions.json", "gemini-dog-request.json", "gemini-dog-questions.json"):
+                shutil.copyfile(references / name, root / name)
+            for command in commands:
+                with self.subTest(command=command):
+                    self.assertEqual(command[0], "decision")
+                    args = command[1:]
+                    seen_commands.add(args[0])
+                    for flag in ("--dry-run", "--json"):
+                        if flag not in args:
+                            args.append(flag)
+                    result = invoke(*args, cwd=root, env={"DECISION_BASE_URL": url})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    request = json.loads(result.stdout)
+                    self.assertTrue(request["questions"])
+                    seen_types.update(q["type"] for q in request["questions"].values())
+                    self.assertEqual(requests, [], "A documented dry run contacted the provider")
+            self.assertTrue({"choice", "noul", "score", "box", "ask", "run"} <= seen_commands)
+            self.assertEqual(seen_types, {"choice", "noul", "score", "box"})
 
 
 if __name__ == "__main__":

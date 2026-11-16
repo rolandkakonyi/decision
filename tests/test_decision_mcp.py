@@ -19,10 +19,10 @@ from transport import command, working_directory, isolate
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUEST = json.loads((ROOT / "examples/request.json").read_text())
-HAS_SDKS = bool(importlib.util.find_spec("mcp") and importlib.util.find_spec("typesafe_sdk"))
+HAS_SDKS = bool(importlib.util.find_spec("mcp"))
 
 
-@unittest.skipUnless(HAS_SDKS, "requires pinned MCP and TypeSafe SDKs")
+@unittest.skipUnless(HAS_SDKS, "requires the MCP test client")
 class DecisionTransportTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
@@ -82,7 +82,7 @@ class DecisionTransportTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        self.environment = isolate(dict(os.environ, DECISION_PROVIDER="typesafe", DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom",
+        self.environment = isolate(dict(DECISION_PROVIDER="typesafe", DECISION_BASE_URL=f"http://127.0.0.1:{self.server.server_port}/custom",
                                 DECISION_API_KEY_ENV="FIXTURE_KEY", FIXTURE_KEY="provider-secret",
                                 DECISION_MODEL="fixture-default", TYPESAFEAI_API_KEY="do-not-forward"))
 
