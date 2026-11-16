@@ -35,13 +35,13 @@ impl Args {
         arguments: impl IntoIterator<Item = impl Into<std::ffi::OsString> + Clone>,
     ) -> Self {
         let matches = clap::Command::new("hierarchical")
-            .about("Compare flat, greedy, and two-branch product classification through decision. JSON results and request traces go to stdout; inference is billed by the selected provider.")
+            .about("Compare flat and hierarchical product classification through decision. JSON results and request traces go to stdout; inference is billed by the selected provider.")
             .arg(Arg::new("decision").long("decision").default_value("decision").value_parser(clap::value_parser!(PathBuf)))
             .arg(Arg::new("provider").long("provider").required(true))
             .arg(Arg::new("model").long("model").required(true))
             .arg(Arg::new("data").long("data").value_parser(clap::value_parser!(PathBuf)))
             .arg(Arg::new("sizes").long("sizes").value_delimiter(',').value_parser(clap::value_parser!(u32).range(2..)).action(clap::ArgAction::Append).help("Nested candidate counts, e.g. 128,255,1024; all labeled targets are retained"))
-            .arg(Arg::new("strategies").long("strategies").value_delimiter(',').action(clap::ArgAction::Append).value_parser(["flat","greedy","two-branch"]).default_values(["flat","greedy","two-branch"]).help("Strategies to compare; flat is required as the matched baseline"))
+            .arg(Arg::new("strategies").long("strategies").value_delimiter(',').action(clap::ArgAction::Append).value_parser(["flat","greedy","two-branch","two-branch-top-two"]).default_values(["flat","greedy","two-branch"]).help("Strategies to compare; flat is required as the matched baseline"))
             .arg(Arg::new("rounds").long("rounds").default_value("5").value_parser(clap::value_parser!(u32).range(1..)))
             .arg(Arg::new("warmups").long("warmups").default_value("1").value_parser(clap::value_parser!(u32).range(1..)))
             .arg(Arg::new("warmup-cases").long("warmup-cases").value_parser(clap::value_parser!(u32).range(1..)).help("Cases per warmup round; default: entire dataset"))
@@ -67,6 +67,7 @@ impl Args {
                     "flat" => Strategy::Flat,
                     "greedy" => Strategy::Greedy,
                     "two-branch" => Strategy::TwoBranch,
+                    "two-branch-top-two" => Strategy::TwoBranchTopTwo,
                     _ => unreachable!(),
                 })
                 .collect(),
@@ -204,6 +205,7 @@ enum Strategy {
     Flat,
     Greedy,
     TwoBranch,
+    TwoBranchTopTwo,
 }
 #[cfg(test)]
 const STRATEGIES: [Strategy; 3] = [Strategy::Flat, Strategy::Greedy, Strategy::TwoBranch];
@@ -225,6 +227,7 @@ fn ask_one(
 fn choose_each(
     ask: &mut impl FnMut(&[Vec<Category>]) -> Result<Vec<Value>>,
     menus: Vec<Vec<Category>>,
+    keep: usize,
 ) -> Result<Vec<Category>> {
     let questions: Vec<_> = menus.iter().filter(|m| m.len() > 1).cloned().collect();
     let answers = if questions.is_empty() {
@@ -236,16 +239,39 @@ fn choose_each(
     menus
         .into_iter()
         .map(|menu| {
-            let label = if menu.len() == 1 {
-                menu[0].id.clone()
-            } else {
-                selected(&answers.next().ok_or("Missing batch answer")?)?
-            };
+            if menu.len() == 1 {
+                return Ok(menu);
+            }
+            let answer = answers.next().ok_or("Missing batch answer")?;
+            if keep > 1 {
+                return ranked_candidates(&menu, &answer, keep);
+            }
+            let label = selected(&answer)?;
             menu.into_iter()
                 .find(|c| c.id == label)
+                .map(|c| vec![c])
                 .ok_or("Unknown selected category".into())
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()
+        .map(|menus| menus.into_iter().flatten().collect())
+}
+
+fn ranked_candidates(options: &[Category], answer: &Value, keep: usize) -> Result<Vec<Category>> {
+    let mut ranked = options
+        .iter()
+        .map(|category| {
+            answer["probabilities"][&category.id]
+                .as_f64()
+                .map(|probability| (category, probability))
+                .ok_or_else(|| "Missing category probability".to_owned())
+        })
+        .collect::<Result<Vec<_>>>()?;
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.id.cmp(&b.0.id)));
+    Ok(ranked
+        .into_iter()
+        .take(keep)
+        .map(|(c, _)| c.clone())
+        .collect())
 }
 
 fn classify(
@@ -263,11 +289,12 @@ fn classify(
         let winners = choose_each(
             &mut ask,
             options.chunks(CHOICE_LIMIT).map(<[_]>::to_vec).collect(),
+            1,
         )?;
         return selected(&ask_one(&mut ask, winners)?);
     }
     let groups: Vec<_> = data.groups.iter().map(|g| g.category.clone()).collect();
-    let answer = ask_one(&mut ask, groups)?;
+    let answer = ask_one(&mut ask, groups.clone())?;
     if strategy == Strategy::Greedy {
         let group_id = selected(&answer)?;
         let group = data
@@ -277,24 +304,25 @@ fn classify(
             .ok_or("Unknown group")?;
         return selected(&ask_one(&mut ask, data.leaves(group))?);
     }
-    let mut ranked = Vec::new();
-    for group in &data.groups {
-        let probability = answer["probabilities"][&group.category.id]
-            .as_f64()
-            .ok_or("Missing group probability")?;
-        ranked.push((group, probability));
-    }
-    ranked.sort_by(|a, b| {
-        b.1.total_cmp(&a.1)
-            .then(a.0.category.id.cmp(&b.0.category.id))
-    });
+    let ranked = ranked_candidates(&groups, &answer, 2)?;
     let candidates = choose_each(
         &mut ask,
         ranked
             .into_iter()
-            .take(2)
-            .map(|(group, _)| data.leaves(group))
+            .map(|category| {
+                let group = data
+                    .groups
+                    .iter()
+                    .find(|g| g.category.id == category.id)
+                    .unwrap();
+                data.leaves(group)
+            })
             .collect(),
+        if strategy == Strategy::TwoBranchTopTwo {
+            2
+        } else {
+            1
+        },
     )?;
     // Rerank leaves together: local probabilities from different menus are not comparable.
     selected(&ask_one(&mut ask, candidates)?)
@@ -446,6 +474,15 @@ fn experiment(
                         failure = Some(error);
                         break 'experiment;
                     }
+                }
+                if case_count >= 64 && (case_index + 1) % 32 == 0 {
+                    eprintln!(
+                        "Completed {phase} products {}/{}; {} cumulative attempts, {:?} input tokens",
+                        case_index + 1,
+                        case_count,
+                        budget.attempts,
+                        budget.input_tokens
+                    );
                 }
             }
             eprintln!(
@@ -933,6 +970,76 @@ mod tests {
     }
 
     #[test]
+    fn top_two_preserves_second_ranked_leaf_for_reranking() {
+        let data = Data::parse(r#"{"groups":[
+            {"id":"a","description":"A","children":[{"id":"a1","description":"A1"},{"id":"a2","description":"A2"},{"id":"a3","description":"A3"}]},
+            {"id":"b","description":"B","children":[{"id":"b1","description":"B1"},{"id":"b2","description":"B2"},{"id":"b3","description":"B3"}]}
+        ],"cases":[{"id":"case","text":"product","expected":"a2"}]}"#).unwrap();
+        for (strategy, expected, final_size) in [
+            (Strategy::Flat, "a2", 6),
+            (Strategy::TwoBranch, "a1", 2),
+            (Strategy::TwoBranchTopTwo, "a2", 4),
+        ] {
+            let mut calls = 0;
+            let result = classify(&data, strategy, |menus| {
+                calls += 1;
+                if calls == 2 {
+                    assert_eq!(menus.len(), 2);
+                    assert!(menus.iter().all(|menu| menu.len() == 3));
+                    return Ok(menus
+                        .iter()
+                        .map(|menu| {
+                            let mut result = answer(menu, &menu[0].id);
+                            result["probabilities"][&menu[0].id] = json!(0.5);
+                            result["probabilities"][&menu[1].id] = json!(0.3);
+                            result["probabilities"][&menu[2].id] = json!(0.2);
+                            result
+                        })
+                        .collect());
+                }
+                let menu = &menus[0];
+                if strategy == Strategy::Flat || calls == 3 {
+                    assert_eq!(menu.len(), final_size);
+                    assert!(
+                        !menu.iter().any(|c| c.id == "a3" || c.id == "b3")
+                            || strategy == Strategy::Flat
+                    );
+                }
+                let chosen = if menu.iter().any(|c| c.id == "a2") {
+                    "a2"
+                } else {
+                    &menu[0].id
+                };
+                Ok(vec![answer(menu, chosen)])
+            })
+            .unwrap();
+            assert_eq!(result, expected);
+            assert_eq!(calls, if strategy == Strategy::Flat { 1 } else { 3 });
+        }
+    }
+
+    #[test]
+    fn probability_ranking_breaks_ties_by_id_and_caps_candidates() {
+        let options = vec![
+            Category {
+                id: "b".into(),
+                description: "B".into(),
+            },
+            Category {
+                id: "a".into(),
+                description: "A".into(),
+            },
+        ];
+        let tied = json!({"probabilities":{"a":0.5,"b":0.5}});
+        let ranked = ranked_candidates(&options, &tied, 3).unwrap();
+        assert_eq!(
+            ranked.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert!(ranked_candidates(&options, &json!({}), 2).is_err());
+    }
+
+    #[test]
     fn selected_strategies_and_small_warmup_do_not_spend_on_greedy() {
         let args = Args::parse_from([
             "hierarchical",
@@ -945,13 +1052,16 @@ mod tests {
             "--context",
             "local fixture",
             "--strategies",
-            "flat,two-branch",
+            "flat,two-branch-top-two",
             "--rounds",
             "1",
             "--warmup-cases",
             "2",
         ]);
-        assert_eq!(args.strategies, vec![Strategy::Flat, Strategy::TwoBranch]);
+        assert_eq!(
+            args.strategies,
+            vec![Strategy::Flat, Strategy::TwoBranchTopTwo]
+        );
         let report = experiment(&data(), &args, &mut Budget::default(), response_ok);
         assert_eq!(report["complete"], true);
         assert_eq!(report["provider_attempts"], 56);

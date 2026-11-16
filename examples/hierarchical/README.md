@@ -1,6 +1,6 @@
 # Hierarchical classification
 
-This native Rust example compares three ways to classify the same products
+This native Rust example compares ways to classify the same products
 through the installed `decision` CLI:
 
 - **Flat:** one Choice over all leaves when there are at most 255. Larger
@@ -14,6 +14,11 @@ through the installed `decision` CLI:
   probable groups in one batch, then choose between their selected leaves.
   This uses three sequential requests and can recover from an incorrect top-ranked group.
   It cannot recover a leaf excluded by both groups or either local selection.
+- **Two branch, top two leaves:** use the same two groups and batched leaf
+  questions, retain the two highest-probability leaves from each group, then
+  rerank all four together. Probability ties use ascending category ID. This
+  also uses three requests and can retain a correct leaf ranked second locally;
+  the root selection and final reranking can still discard it.
 
 Code owns the taxonomy and traversal. The model only makes typed judgments.
 Each request sees the product description, the same four group summaries, and
@@ -204,9 +209,16 @@ requests, batching its two independent department-level leaf questions.
 With this sample, the invocation uses 1,056 requests including warmups.
 
 `--strategies` must contain unique entries and include `flat`, which owns the
-paired baseline. The default remains all three strategies. Use additional
+paired baseline. The default remains flat, greedy, and two-branch. Use additional
 rounds when measuring run-to-run variability. A one-pass quality evaluation
 provides descriptive latency measurements, not proof of a general speedup.
+
+To retain two leaves per branch, use `--strategies flat,two-branch-top-two`
+with the same invocation and a separate result path. Request count and warmup
+settings are unchanged; only the final candidate menu grows from two to four.
+Keep data, labels, and model fixed when comparing variants. If errors from a
+sample motivated a variant, reusing that sample is a development experiment;
+use separate held-out listings to validate generalization.
 
 ## Read the comparison
 
