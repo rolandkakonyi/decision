@@ -1,14 +1,17 @@
 """Execute the native generator's user-facing examples without provider calls."""
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 import re
 import runpy
 import shlex
 import shutil
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from native import invoke, response_server
 
@@ -17,7 +20,8 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 
 class DocumentedExamplesTests(unittest.TestCase):
     def test_wdc_preparation_keeps_labels_and_deduplicates_products(self):
-        prepare = runpy.run_path(str(Path(__file__).resolve().parents[1] / "examples/hierarchical/prepare_wdc.py"))["prepare"]
+        module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "examples/hierarchical/prepare_wdc.py"))
+        prepare = module["prepare"]
         fields = {name: {} for name in ("CategoryID", "CategoryName", "pathlist_ids", "pathlist_names", "title", "desc", "gtin", "cluster_id")}
         for index in range(5):
             product = min(index, 3)
@@ -38,6 +42,16 @@ class DocumentedExamplesTests(unittest.TestCase):
             row = selected["source_row_id"]
             self.assertEqual(case["expected"], fields["CategoryID"][row])
             self.assertEqual(case["text"], "Title: " + fields["title"][row] + "\nDescription: " + (fields["desc"][row] or ""))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path, output_path = root / "source.json", root / "sample.json"
+            source_path.write_bytes(source.encode())
+            with patch.dict(module["main"].__globals__, {"SOURCE_SHA256": hashlib.sha256(source.encode()).hexdigest()}), \
+                    patch.object(sys, "argv", ["prepare_wdc.py", "--source", str(source_path), "--output", str(output_path), "--count", "4"]), \
+                    patch("sys.stdout"):
+                module["main"]()
+            stored = json.loads(output_path.with_suffix(".manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(stored["dataset_sha256"], hashlib.sha256(output_path.read_bytes()).hexdigest())
         fields["pathlist_names"]["0"][-1] = "Conflicting category"
         with self.assertRaises(ValueError):
             prepare(json.dumps(fields), 4)

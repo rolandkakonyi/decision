@@ -86,9 +86,9 @@ def main():
         parser.error("Source does not match the pinned WDC-222 snapshot")
     dataset, manifest = prepare(source, args.count)
     encoded = json.dumps(dataset, ensure_ascii=False, indent=2) + "\n"
-    args.output.write_text(encoded, encoding="utf-8")
+    args.output.write_text(encoded, encoding="utf-8", newline="\n")
     manifest["dataset_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
-    args.output.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    args.output.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({key: manifest[key] for key in ("source_sha256", "dataset_sha256", "source_offers", "selected_products", "category_count", "group_count")}))
 
 
