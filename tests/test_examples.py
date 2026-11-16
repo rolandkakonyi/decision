@@ -15,6 +15,41 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 
 
 class DocumentedExamplesTests(unittest.TestCase):
+    def test_site_query_commands_validate_without_inference(self):
+        docs = Path(__file__).resolve().parents[1] / "docs"
+        homepage = (docs / "index.md").read_text(encoding="utf-8")
+        sample = json.loads(re.search(r"```json\n(.*?)```", homepage, re.S).group(1))
+        commands = []
+        query_commands = {"noul", "choice", "score", "box", "ask", "run"}
+        for path in sorted(docs.glob("*.md")):
+            for block in re.findall(r"```bash\n(.*?)```", path.read_text(encoding="utf-8"), re.S):
+                for line in block.replace("\\\n", "").strip().splitlines():
+                    command = shlex.split(line)
+                    if len(command) > 1 and command[0] == "decision" and command[1] in query_commands:
+                        commands.append((path.name, command[1:]))
+        self.assertTrue(commands, "No site query examples found")
+        with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
+            root = Path(directory)
+            exported = root / "skill"
+            result = invoke("skill", "--output", exported)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for path in (exported / "references").glob("*.json"):
+                shutil.copyfile(path, root / path.name)
+            (root / "request.json").write_text(json.dumps(sample), encoding="utf-8")
+            (root / "state.json").write_text(json.dumps(sample["state"]), encoding="utf-8")
+            (root / "questions.json").write_text(json.dumps(sample["questions"]), encoding="utf-8")
+            for name in ("dog.jpg", "before.jpg", "after.jpg", "photo.png"):
+                (root / name).write_bytes(PNG)
+            for page, args in commands:
+                with self.subTest(page=page, command=args):
+                    for flag in ("--dry-run", "--json"):
+                        if flag not in args:
+                            args.append(flag)
+                    result = invoke(*args, cwd=root, env={"DECISION_BASE_URL": url})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertTrue(json.loads(result.stdout)["questions"])
+                    self.assertEqual(requests, [], "A site dry run contacted the provider")
+
     def test_all_documented_query_commands_validate_without_inference(self):
         with tempfile.TemporaryDirectory() as directory, response_server({}) as (url, requests):
             root = Path(directory)

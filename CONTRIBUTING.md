@@ -11,8 +11,9 @@ in an issue first. Contributions use the project's [MIT license](LICENSE).
 
 ## Development
 
-Install Rust using the repository toolchain, Python 3.11+, and uv. Python is
-used by the integration tests; users of the executable do not need it.
+Install Rust using the repository toolchain, Python 3.11+, and uv. Python supports
+integration tests, packaging, and the documentation site; users of the
+executable do not need it.
 
 ```bash
 cargo fmt --check
@@ -43,6 +44,36 @@ target/debug/decision skill --output skills/decision
 For packaging changes, run the native archive checks in
 [docs/standalone.md](docs/standalone.md). Never commit credentials, environment
 files, build outputs, or executables.
+
+## Documentation site
+
+The site uses [Zensical](https://zensical.org/) and deploys to this repository's
+[GitHub Pages site](https://rolandkakonyi.github.io/decision/). It uses free,
+open-source tooling and requires no hosted search or analytics service.
+
+```bash
+uv sync --locked --group docs
+uv run --locked --group docs zensical build --clean --strict
+uv run --locked --group docs python scripts/check_docs.py
+uv run --locked --group docs zensical serve
+```
+
+Edit the canonical Markdown guides in `docs/`; the README is a short entry point.
+Zensical renders these files directly into `.state/site` and includes the
+generated references from `skills/decision/references/`. Change those references
+through their Rust/template sources and regenerate them, rather than editing
+the export. Preview builds watch the source files; changing README headings
+does not affect the site. Navigation and theme settings live in `zensical.toml`.
+
+Strict builds check Markdown links and anchors. `scripts/check_docs.py` also
+checks rendered HTML links and assets, including homepage cards and the
+`/decision/` Pages base. The native example tests validate documented query
+commands against local fixtures without credentials or paid inference.
+
+Pull requests build and check the site without deployment. A push to `main`
+publishes it through `.github/workflows/docs.yml`. The repository's Pages
+publishing source must be **GitHub Actions**. Documentation dependencies belong
+to the `docs` group and are not part of the installed CLI or native archive.
 
 ## Releases
 

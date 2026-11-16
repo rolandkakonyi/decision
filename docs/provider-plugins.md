@@ -1,5 +1,10 @@
 # Executable provider protocol
 
+An executable provider adds an inference backend. A [Codex plugin export](extensions.md)
+connects a separately installed Decision command to Codex; it does not implement
+a backend. For installation and scope management, see the
+[provider user guide](installed-providers.md).
+
 Decision runs trusted provider programs in any language. A package contains a
 `decision-provider.json` manifest and the program/resources it needs. Authors
 own dependencies and packaging; users supply any declared runtime. Programs
@@ -143,6 +148,6 @@ launching the program. Other installed providers are not loaded.
 
 Skill and Codex plugin exports never launch providers. Add custom variable
 names with `decision plugin --env-var NAME`; values are never exported.
-See [the executable fixture](../tests/plugin_fixture.py) and
-[conformance tests](../tests/test_provider_plugin_mcp.py) for working examples,
+See [the executable fixture](https://github.com/rolandkakonyi/decision/blob/main/tests/plugin_fixture.py) and
+[conformance tests](https://github.com/rolandkakonyi/decision/blob/main/tests/test_provider_plugin_mcp.py) for working examples,
 including install/update, CLI/MCP, images, timeout, and cancellation.

@@ -85,4 +85,4 @@ decision plugin --output ./decision-plugin --integration mcp \
 
 Exports reference an installed executable; they do not copy it. Register the
 marketplace explicitly as described in the generated
-[plugin guide](../skills/decision/references/plugin.md).
+[plugin guide](plugin-reference.md).
