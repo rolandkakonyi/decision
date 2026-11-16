@@ -12,6 +12,7 @@ use std::{
 
 type Result<T> = std::result::Result<T, String>;
 const DATA: &str = include_str!("data.json");
+const CHOICE_LIMIT: usize = 255;
 const INSTRUCTIONS: &str = "Select the category that best describes the product's primary purpose. Use the descriptions, not incidental words or included accessories. Choose exactly one offered category.";
 
 struct Args {
@@ -19,9 +20,11 @@ struct Args {
     provider: String,
     model: String,
     data: Option<PathBuf>,
+    sizes: Vec<usize>,
     rounds: u32,
     warmups: u32,
     max_calls: u32,
+    max_input_tokens: Option<u64>,
     context: String,
 }
 
@@ -35,9 +38,11 @@ impl Args {
             .arg(Arg::new("provider").long("provider").required(true))
             .arg(Arg::new("model").long("model").required(true))
             .arg(Arg::new("data").long("data").value_parser(clap::value_parser!(PathBuf)))
+            .arg(Arg::new("sizes").long("sizes").value_delimiter(',').value_parser(clap::value_parser!(u32).range(2..)).action(clap::ArgAction::Append).help("Nested candidate counts, e.g. 128,255,1024; all labeled targets are retained"))
             .arg(Arg::new("rounds").long("rounds").default_value("5").value_parser(clap::value_parser!(u32).range(5..)))
             .arg(Arg::new("warmups").long("warmups").default_value("1").value_parser(clap::value_parser!(u32).range(1..)))
             .arg(Arg::new("max-calls").long("max-calls").required(true).value_parser(clap::value_parser!(u32).range(1..)).help("Maximum provider attempts including warmups and failures; no retries"))
+            .arg(Arg::new("max-input-tokens").long("max-input-tokens").value_parser(clap::value_parser!(u64).range(1..)).help("Stop before another call once reported input tokens reach this total; one call can overshoot"))
             .arg(Arg::new("context").long("context").required(true).help("Host/load notes recorded with results, e.g. laptop idle, Wi-Fi"))
             .get_matches_from(arguments);
         Self {
@@ -45,9 +50,16 @@ impl Args {
             provider: matches.get_one::<String>("provider").unwrap().clone(),
             model: matches.get_one::<String>("model").unwrap().clone(),
             data: matches.get_one::<PathBuf>("data").cloned(),
+            sizes: matches
+                .get_many::<u32>("sizes")
+                .into_iter()
+                .flatten()
+                .map(|n| *n as usize)
+                .collect(),
             rounds: *matches.get_one::<u32>("rounds").unwrap(),
             warmups: *matches.get_one::<u32>("warmups").unwrap(),
             max_calls: *matches.get_one::<u32>("max-calls").unwrap(),
+            max_input_tokens: matches.get_one::<u64>("max-input-tokens").copied(),
             context: matches.get_one::<String>("context").unwrap().clone(),
         }
     }
@@ -60,7 +72,7 @@ struct Category {
     description: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Group {
     #[serde(flatten)]
@@ -68,7 +80,7 @@ struct Group {
     children: Vec<Category>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Case {
     id: String,
@@ -76,7 +88,7 @@ struct Case {
     expected: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Data {
     groups: Vec<Group>,
@@ -88,12 +100,12 @@ impl Data {
         let data: Self = serde_json::from_str(text).map_err(|e| format!("Invalid dataset: {e}"))?;
         let mut ids = HashSet::new();
         let mut leaves = HashSet::new();
-        if data.groups.len() < 2 || data.cases.is_empty() {
+        if !(2..=CHOICE_LIMIT).contains(&data.groups.len()) || data.cases.is_empty() {
             return Err("Dataset needs at least two groups and one labeled case".into());
         }
         for group in &data.groups {
-            if group.children.len() < 2 {
-                return Err("Each group needs at least two leaf categories".into());
+            if !(2..=CHOICE_LIMIT).contains(&group.children.len()) {
+                return Err("Each group needs 2 to 255 leaf categories".into());
             }
             for category in std::iter::once(&group.category).chain(&group.children) {
                 if category.id.trim().is_empty()
@@ -116,6 +128,47 @@ impl Data {
             }
         }
         Ok(data)
+    }
+
+    fn subset(&self, size: usize) -> Result<Self> {
+        let mut selected: HashSet<_> = self.cases.iter().map(|c| c.expected.as_str()).collect();
+        for group in &self.groups {
+            selected.extend(group.children.iter().take(2).map(|c| c.id.as_str()));
+        }
+        let total: usize = self.groups.iter().map(|g| g.children.len()).sum();
+        if size < selected.len() || size > total {
+            return Err(format!(
+                "Candidate count must be {} to {total} to retain targets and groups",
+                selected.len()
+            ));
+        }
+        let mut index = 0;
+        while selected.len() < size {
+            for group in &self.groups {
+                if selected.len() < size
+                    && let Some(child) = group.children.get(index)
+                {
+                    selected.insert(child.id.as_str());
+                }
+            }
+            index += 1;
+        }
+        Ok(Self {
+            groups: self
+                .groups
+                .iter()
+                .map(|g| Group {
+                    category: g.category.clone(),
+                    children: g
+                        .children
+                        .iter()
+                        .filter(|c| selected.contains(c.id.as_str()))
+                        .cloned()
+                        .collect(),
+                })
+                .collect(),
+            cases: self.cases.clone(),
+        })
     }
 
     fn leaves(&self, group: &Group) -> Vec<Category> {
@@ -146,20 +199,59 @@ fn selected(answer: &Value) -> Result<String> {
         .ok_or("Missing choice".into())
 }
 
+fn ask_one(
+    ask: &mut impl FnMut(&[Vec<Category>]) -> Result<Vec<Value>>,
+    options: Vec<Category>,
+) -> Result<Value> {
+    ask(&[options])?.pop().ok_or("Missing answer".into())
+}
+
+fn choose_each(
+    ask: &mut impl FnMut(&[Vec<Category>]) -> Result<Vec<Value>>,
+    menus: Vec<Vec<Category>>,
+) -> Result<Vec<Category>> {
+    let questions: Vec<_> = menus.iter().filter(|m| m.len() > 1).cloned().collect();
+    let answers = if questions.is_empty() {
+        vec![]
+    } else {
+        ask(&questions)?
+    };
+    let mut answers = answers.into_iter();
+    menus
+        .into_iter()
+        .map(|menu| {
+            let label = if menu.len() == 1 {
+                menu[0].id.clone()
+            } else {
+                selected(&answers.next().ok_or("Missing batch answer")?)?
+            };
+            menu.into_iter()
+                .find(|c| c.id == label)
+                .ok_or("Unknown selected category".into())
+        })
+        .collect()
+}
+
 fn classify(
     data: &Data,
     strategy: Strategy,
-    mut ask: impl FnMut(&[Category]) -> Result<Value>,
+    mut ask: impl FnMut(&[Vec<Category>]) -> Result<Vec<Value>>,
 ) -> Result<String> {
     if strategy == Strategy::Flat {
-        return selected(&ask(&data
-            .groups
-            .iter()
-            .flat_map(|g| data.leaves(g))
-            .collect::<Vec<_>>())?);
+        let mut options: Vec<_> = data.groups.iter().flat_map(|g| data.leaves(g)).collect();
+        if options.len() <= CHOICE_LIMIT {
+            return selected(&ask_one(&mut ask, options)?);
+        }
+        // Fixed hash order keeps chunks independent of semantic taxonomy groups.
+        options.sort_by_cached_key(|c| hash(c.id.as_bytes()));
+        let winners = choose_each(
+            &mut ask,
+            options.chunks(CHOICE_LIMIT).map(<[_]>::to_vec).collect(),
+        )?;
+        return selected(&ask_one(&mut ask, winners)?);
     }
     let groups: Vec<_> = data.groups.iter().map(|g| g.category.clone()).collect();
-    let answer = ask(&groups)?;
+    let answer = ask_one(&mut ask, groups)?;
     if strategy == Strategy::Greedy {
         let group_id = selected(&answer)?;
         let group = data
@@ -167,7 +259,7 @@ fn classify(
             .iter()
             .find(|g| g.category.id == group_id)
             .ok_or("Unknown group")?;
-        return selected(&ask(&data.leaves(group))?);
+        return selected(&ask_one(&mut ask, data.leaves(group))?);
     }
     let mut ranked = Vec::new();
     for group in &data.groups {
@@ -180,19 +272,16 @@ fn classify(
         b.1.total_cmp(&a.1)
             .then(a.0.category.id.cmp(&b.0.category.id))
     });
-    let mut candidates = Vec::new();
-    for (group, _) in ranked.into_iter().take(2) {
-        let options = data.leaves(group);
-        let label = selected(&ask(&options)?)?;
-        candidates.push(
-            options
-                .into_iter()
-                .find(|c| c.id == label)
-                .ok_or("Unknown leaf")?,
-        );
-    }
+    let candidates = choose_each(
+        &mut ask,
+        ranked
+            .into_iter()
+            .take(2)
+            .map(|(group, _)| data.leaves(group))
+            .collect(),
+    )?;
     // Rerank leaves together: local probabilities from different menus are not comparable.
-    selected(&ask(&candidates)?)
+    selected(&ask_one(&mut ask, candidates)?)
 }
 
 #[derive(Serialize)]
@@ -225,15 +314,31 @@ fn hash(bytes: &[u8]) -> String {
         .collect()
 }
 
+struct Budget {
+    attempts: u32,
+    input_tokens: Option<u64>,
+    effective_model: Option<String>,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            attempts: 0,
+            input_tokens: Some(0),
+            effective_model: None,
+        }
+    }
+}
+
 fn experiment(
     data: &Data,
     args: &Args,
+    budget: &mut Budget,
     mut evaluate: impl FnMut(&Value) -> Result<Value>,
 ) -> Value {
     let mut runs = Vec::new();
-    let mut attempts = 0;
+    let initial_attempts = budget.attempts;
     let mut failure = None;
-    let mut effective_model = None;
     let groups: serde_json::Map<_, _> = data
         .groups
         .iter()
@@ -247,18 +352,29 @@ fn experiment(
                         STRATEGIES[(round as usize + case_index + offset) % STRATEGIES.len()];
                     let mut calls = Vec::new();
                     let started = Instant::now();
-                    let result = classify(data, strategy, |options| {
-                        if attempts >= args.max_calls {
+                    let result = classify(data, strategy, |menus| {
+                        if budget.attempts >= args.max_calls {
                             return Err(
                                 "Provider attempt limit reached; experiment is incomplete".into()
                             );
                         }
-                        let criteria: serde_json::Map<_, _> = options
-                            .iter()
-                            .map(|c| (c.id.clone(), json!(c.description)))
-                            .collect();
-                        let request = json!({"state":{"product":case.text,"group_descriptions":groups},"questions":{"category":{"type":"choice","instructions":INSTRUCTIONS,"criteria":criteria}}});
-                        attempts += 1;
+                        if let Some(limit) = args.max_input_tokens {
+                            let used = budget.input_tokens.ok_or(
+                                "Input usage is unknown; token-limited experiment stopped",
+                            )?;
+                            if used >= limit {
+                                return Err(
+                                    "Reported input token limit reached; experiment is incomplete"
+                                        .into(),
+                                );
+                            }
+                        }
+                        let questions: serde_json::Map<_,_> = menus.iter().enumerate().map(|(index,options)| {
+                            let criteria: serde_json::Map<_,_> = options.iter().map(|c| (c.id.clone(),json!(c.description))).collect();
+                            (format!("category_{index}"),json!({"type":"choice","instructions":INSTRUCTIONS,"criteria":criteria}))
+                        }).collect();
+                        let request = json!({"state":{"product":case.text,"group_descriptions":groups},"questions":questions});
+                        budget.attempts += 1;
                         let response = evaluate(&request);
                         calls.push(Call {
                             request,
@@ -266,15 +382,26 @@ fn experiment(
                             error: response.as_ref().err().cloned(),
                         });
                         let response = response?;
+                        budget.input_tokens = budget.input_tokens.and_then(|used| {
+                            used.checked_add(response["usage"]["input_tokens"].as_u64()?)
+                        });
+                        if args.max_input_tokens.is_some() && budget.input_tokens.is_none() {
+                            return Err(
+                                "Input usage is unknown; token-limited experiment stopped".into()
+                            );
+                        }
                         let model = response["model"].as_str().ok_or("Missing response model")?;
-                        if effective_model
+                        if budget
+                            .effective_model
                             .as_deref()
                             .is_some_and(|previous| previous != model)
                         {
                             return Err("Response model changed; experiment is incomplete".into());
                         }
-                        effective_model = Some(model.to_owned());
-                        Ok(response["answers"]["category"].clone())
+                        budget.effective_model = Some(model.to_owned());
+                        Ok((0..menus.len())
+                            .map(|index| response["answers"][format!("category_{index}")].clone())
+                            .collect())
                     });
                     let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
                     let predicted = result.as_ref().ok().cloned();
@@ -300,11 +427,16 @@ fn experiment(
                     }
                 }
             }
-            eprintln!("Completed {phase} round {} of {rounds}", round + 1);
+            eprintln!(
+                "Completed {phase} round {} of {rounds}; {} cumulative attempts, {:?} input tokens",
+                round + 1,
+                budget.attempts,
+                budget.input_tokens
+            );
         }
     }
     let calls: Vec<_> = runs.iter().flat_map(|r| &r.calls).collect();
-    json!({"complete":failure.is_none(),"error":failure,"provider_attempts":attempts,"effective_model":effective_model,
+    json!({"complete":failure.is_none(),"error":failure,"provider_attempts":budget.attempts-initial_attempts,"effective_model":budget.effective_model,
         "usage_including_warmups":{"input_tokens":token_total(&calls,"input_tokens"),"output_tokens":token_total(&calls,"output_tokens")},
         "summary":if failure.is_none() {summary(&runs)} else {Value::Null}, "runs":runs})
 }
@@ -331,6 +463,7 @@ fn summary(runs: &[Run]) -> Value {
         }).collect();
         json!({"strategy":strategy,"classifications":measured.len(),"correct":correct,
             "accuracy":correct as f64 / measured.len() as f64,"requests":calls.len(),
+            "questions":calls.iter().map(|call| call.request["questions"].as_object().unwrap().len()).sum::<usize>(),
             "input_tokens":token_total(&calls,"input_tokens"),"output_tokens":token_total(&calls,"output_tokens"),
             "provider_ms_total":provider_ms,"wall_ms_total":times.iter().sum::<f64>(),
             "wall_ms_median":times[(times.len()-1)/2],"wall_ms_p95":times[(times.len()*95).div_ceil(100)-1],
@@ -379,6 +512,17 @@ fn run() -> Result<bool> {
         None => DATA.to_owned(),
     };
     let data = Data::parse(&text)?;
+    let datasets = if args.sizes.is_empty() {
+        vec![data]
+    } else {
+        if args.sizes.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err("Candidate sizes must be strictly increasing".into());
+        }
+        args.sizes
+            .iter()
+            .map(|size| data.subset(*size))
+            .collect::<Result<Vec<_>>>()?
+    };
     let version = Command::new(&args.decision)
         .arg("--version")
         .output()
@@ -390,14 +534,33 @@ fn run() -> Result<bool> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "Invalid system clock")?
         .as_secs();
-    let mut report = experiment(&data, &args, |request| invoke(&args, request));
-    report["metadata"] = json!({"example_version":env!("CARGO_PKG_VERSION"),
+    let mut budget = Budget::default();
+    let mut reports = Vec::new();
+    for data in datasets {
+        let leaves: usize = data.groups.iter().map(|g| g.children.len()).sum();
+        eprintln!("Starting {leaves}-category experiment");
+        let mut report = experiment(&data, &args, &mut budget, |request| invoke(&args, request));
+        report["metadata"] = json!({"example_version":env!("CARGO_PKG_VERSION"),
         "harness_sha256":hash(include_bytes!("main.rs")),"dataset_sha256":hash(text.as_bytes()),
+        "selected_dataset_sha256":hash(&serde_json::to_vec(&data).unwrap()),"leaf_categories":leaves,
+        "flat_mode":if leaves>CHOICE_LIMIT {"chunked_batch"} else {"one_shot"},"choice_limit":CHOICE_LIMIT,"independent_questions_batched":true,
         "decision_version":String::from_utf8_lossy(&version.stdout).trim(),
         "provider":args.provider,"model":args.model,"os":std::env::consts::OS,"arch":std::env::consts::ARCH,
         "context":args.context,"started_unix_seconds":started,
-        "warmup_rounds":args.warmups,"measured_rounds":args.rounds,"max_calls":args.max_calls});
-    report["dataset"] = serde_json::to_value(data).unwrap();
+        "warmup_rounds":args.warmups,"measured_rounds":args.rounds,"max_calls":args.max_calls,"max_input_tokens":args.max_input_tokens});
+        report["dataset"] = serde_json::to_value(data).unwrap();
+        let complete = report["complete"] == true;
+        reports.push(report);
+        if !complete {
+            break;
+        }
+    }
+    let report = if args.sizes.is_empty() {
+        reports.pop().unwrap()
+    } else {
+        json!({"complete":reports.len()==args.sizes.len() && reports.iter().all(|r| r["complete"]==true),
+            "provider_attempts":budget.attempts,"input_tokens_including_warmups":budget.input_tokens,"experiments":reports})
+    };
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
     Ok(report["complete"] == true)
 }
@@ -450,13 +613,24 @@ mod tests {
         json!({"choice":selected,"probabilities":probabilities})
     }
     fn response(request: &Value) -> Value {
-        let first = request["questions"]["category"]["criteria"]
+        let answers: serde_json::Map<_, _> = request["questions"]
             .as_object()
             .unwrap()
-            .keys()
-            .next()
-            .unwrap();
-        json!({"model":"fixture","answers":{"category":{"choice":first}},"usage":{"input_tokens":10,"output_tokens":0},"duration_ms":2.0})
+            .iter()
+            .map(|(id, q)| {
+                let options = q["criteria"].as_object().unwrap();
+                let first = options.keys().next().unwrap();
+                let probabilities: serde_json::Map<_, _> = options
+                    .keys()
+                    .map(|key| (key.clone(), json!(1.0 / options.len() as f64)))
+                    .collect();
+                (
+                    id.clone(),
+                    json!({"choice":first,"probabilities":probabilities}),
+                )
+            })
+            .collect();
+        json!({"model":"fixture","answers":answers,"usage":{"input_tokens":10,"output_tokens":0},"duration_ms":2.0})
     }
 
     #[test]
@@ -465,26 +639,31 @@ mod tests {
         for (strategy, expected, expected_calls) in [
             (Strategy::Flat, "hiking_backpack", 1),
             (Strategy::Greedy, "laptop_backpack", 2),
-            (Strategy::TwoBranch, "hiking_backpack", 4),
+            (Strategy::TwoBranch, "hiking_backpack", 3),
         ] {
             let mut calls = 0;
-            let result = classify(&data, strategy, |options| {
+            let result = classify(&data, strategy, |menus| {
                 calls += 1;
-                let contains = |id| options.iter().any(|c| c.id == id);
-                let selected = if contains("everyday_bags") {
-                    "everyday_bags"
-                } else if contains("hiking_backpack") {
-                    "hiking_backpack"
-                } else {
-                    "laptop_backpack"
-                };
-                let mut result = answer(options, selected);
-                if contains("everyday_bags") {
-                    result["probabilities"]["outdoor_equipment"] = json!(0.35);
-                    result["probabilities"]["electronics"] = json!(0.03);
-                    result["probabilities"]["home_and_kitchen"] = json!(0.02);
-                }
-                Ok(result)
+                menus
+                    .iter()
+                    .map(|options| {
+                        let contains = |id| options.iter().any(|c| c.id == id);
+                        let selected = if contains("everyday_bags") {
+                            "everyday_bags"
+                        } else if contains("hiking_backpack") {
+                            "hiking_backpack"
+                        } else {
+                            "laptop_backpack"
+                        };
+                        let mut result = answer(options, selected);
+                        if contains("everyday_bags") {
+                            result["probabilities"]["outdoor_equipment"] = json!(0.35);
+                            result["probabilities"]["electronics"] = json!(0.03);
+                            result["probabilities"]["home_and_kitchen"] = json!(0.02);
+                        }
+                        Ok(result)
+                    })
+                    .collect()
             })
             .unwrap();
             assert_eq!(result, expected);
@@ -511,7 +690,7 @@ mod tests {
     #[test]
     fn matched_runs_rotate_order_and_keep_warmups_separate() {
         let data = data();
-        let report = experiment(&data, &args(), |request| {
+        let report = experiment(&data, &args(), &mut Budget::default(), |request| {
             assert!(request["state"]["product"].is_string());
             assert_eq!(
                 request["state"]["group_descriptions"]
@@ -521,20 +700,10 @@ mod tests {
                 4
             );
             assert!(!request.to_string().contains("expected"));
-            let options = request["questions"]["category"]["criteria"]
-                .as_object()
-                .unwrap();
-            let mut result = response(request);
-            result["answers"]["category"]["probabilities"] = Value::Object(
-                options
-                    .keys()
-                    .map(|k| (k.clone(), json!(1.0 / options.len() as f64)))
-                    .collect(),
-            );
-            Ok(result)
+            Ok(response(request))
         });
         assert_eq!(report["complete"], true);
-        assert_eq!(report["provider_attempts"], 504);
+        assert_eq!(report["provider_attempts"], 432);
         let runs = report["runs"].as_array().unwrap();
         assert_eq!(runs.len(), 12 * 3 * 6);
         assert_eq!(runs.iter().filter(|r| r["phase"] == "warmup").count(), 36);
@@ -555,14 +724,16 @@ mod tests {
     #[test]
     fn failures_and_call_limit_leave_incomplete_evidence() {
         let data = data();
-        let report = experiment(&data, &args(), |_| Err("fixture failure".into()));
+        let report = experiment(&data, &args(), &mut Budget::default(), |_| {
+            Err("fixture failure".into())
+        });
         assert_eq!(report["complete"], false);
         assert_eq!(report["provider_attempts"], 1);
         assert!(report["summary"].is_null());
         assert_eq!(report["runs"][0]["calls"][0]["error"], "fixture failure");
         let mut args = args();
         args.max_calls = 1;
-        let report = experiment(&data, &args, response_ok);
+        let report = experiment(&data, &args, &mut Budget::default(), response_ok);
         assert_eq!(report["provider_attempts"], 1);
         assert_eq!(report["runs"].as_array().unwrap().len(), 2);
         assert_eq!(report["complete"], false);
@@ -581,7 +752,7 @@ mod tests {
         assert_eq!(token_total(&[&call], "input_tokens"), None);
         assert_eq!(token_total(&[&call], "output_tokens"), Some(0));
         let mut calls = 0;
-        let report = experiment(&data(), &args(), |request| {
+        let report = experiment(&data(), &args(), &mut Budget::default(), |request| {
             calls += 1;
             let mut result = response(request);
             if calls > 1 {
@@ -601,5 +772,132 @@ mod tests {
         let mut value: Value = serde_json::from_str(DATA).unwrap();
         value["cases"][0]["expected"] = json!("everyday_bags");
         assert!(Data::parse(&value.to_string()).is_err());
+    }
+
+    #[test]
+    fn large_flat_tournament_covers_every_leaf_and_reranks_winners() {
+        let mut data = data();
+        for (group_index, group) in data.groups.iter_mut().enumerate() {
+            group.children = (0..64)
+                .map(|i| Category {
+                    id: format!("g{group_index}-leaf{i}"),
+                    description: format!("Leaf {i}"),
+                })
+                .collect();
+        }
+        let target = "g3-leaf63";
+        let mut seen = HashSet::new();
+        let mut calls = 0;
+        let prediction = classify(&data, Strategy::Flat, |menus| {
+            calls += 1;
+            menus
+                .iter()
+                .map(|options| {
+                    assert!((2..=255).contains(&options.len()));
+                    seen.extend(options.iter().map(|c| c.id.clone()));
+                    let choice = if options.iter().any(|c| c.id == target) {
+                        target
+                    } else {
+                        &options[0].id
+                    };
+                    Ok(answer(options, choice))
+                })
+                .collect()
+        })
+        .unwrap();
+        assert_eq!(prediction, target);
+        assert_eq!(seen.len(), 256);
+        assert_eq!(calls, 2); // The single remaining leaf needs no model call.
+    }
+
+    #[test]
+    fn subsets_are_nested_and_preserve_labels_and_descriptions() {
+        let data = data();
+        let smaller = data.subset(16).unwrap();
+        let larger = data.subset(20).unwrap();
+        let ids = |data: &Data| {
+            data.groups
+                .iter()
+                .flat_map(|g| &g.children)
+                .map(|c| c.id.clone())
+                .collect::<HashSet<_>>()
+        };
+        assert_eq!(ids(&smaller).len(), 16);
+        assert!(ids(&smaller).is_subset(&ids(&larger)));
+        assert!(
+            data.cases
+                .iter()
+                .all(|case| ids(&smaller).contains(&case.expected))
+        );
+        for group in &smaller.groups {
+            assert!(group.children.len() >= 2);
+            for leaf in &group.children {
+                assert!(
+                    data.groups
+                        .iter()
+                        .flat_map(|g| &g.children)
+                        .any(|original| original.id == leaf.id
+                            && original.description == leaf.description)
+                );
+            }
+        }
+        assert!(data.subset(2).is_err());
+        assert!(data.subset(25).is_err());
+    }
+
+    #[test]
+    fn budgets_apply_across_scales_and_stop_on_unknown_usage() {
+        let data = data();
+        let mut args = args();
+        args.max_input_tokens = Some(15);
+        let mut budget = Budget::default();
+        let first = experiment(&data, &args, &mut budget, response_ok);
+        assert_eq!(first["provider_attempts"], 2);
+        assert_eq!(budget.input_tokens, Some(20));
+        let second = experiment(&data, &args, &mut budget, |_| {
+            panic!("Budget must stop calls")
+        });
+        assert_eq!(second["provider_attempts"], 0);
+        assert_eq!(second["complete"], false);
+        let report = experiment(&data, &args, &mut Budget::default(), |request| {
+            let mut response = response(request);
+            response["usage"]["input_tokens"] = Value::Null;
+            Ok(response)
+        });
+        assert_eq!(report["provider_attempts"], 1);
+        assert_eq!(report["complete"], false);
+    }
+
+    #[test]
+    fn shopify_scales_use_identical_cases_and_batched_flat_chunks() {
+        let data = Data::parse(include_str!("shopify.json")).unwrap();
+        let mut previous = HashSet::new();
+        for size in [128, 255, 1024] {
+            let subset = data.subset(size).unwrap();
+            let ids: HashSet<_> = subset
+                .groups
+                .iter()
+                .flat_map(|g| &g.children)
+                .map(|c| c.id.clone())
+                .collect();
+            assert_eq!(ids.len(), size);
+            assert!(previous.is_subset(&ids));
+            previous = ids;
+            assert_eq!(
+                serde_json::to_value(&subset.cases).unwrap(),
+                serde_json::to_value(&data.cases).unwrap()
+            );
+            let mut calls = 0;
+            let mut batches = Vec::new();
+            classify(&subset, Strategy::Flat, |menus| {
+                calls += 1;
+                batches.push(menus.len());
+                assert!(menus.iter().all(|m| (2..=255).contains(&m.len())));
+                Ok(menus.iter().map(|m| answer(m, &m[0].id)).collect())
+            })
+            .unwrap();
+            assert_eq!(calls, if size > 255 { 2 } else { 1 });
+            assert_eq!(batches, if size > 255 { vec![5, 1] } else { vec![1] });
+        }
     }
 }
