@@ -1,15 +1,22 @@
 ![decision: typed judgments via CLI and MCP on text and images](docs/assets/decision-banner.png)
 
-# decision
+# Decision
 
 [![GitHub Actions CI](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/rolandkakonyi/decision/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/rolandkakonyi/decision)](https://github.com/rolandkakonyi/decision/releases/latest)
 
-One command for typed judgments from Jev, OpenAI/Gemini Decisions, Cloudflare Clef, or compatible providers.
-The same executable supports terminal commands, a STDIO MCP server, and
-generation of its own companion Agent Skill or a Codex plugin with CLI/MCP integration.
-Ask for a yes probability (Noul), named choices (Choice), ordered ratings (Score),
-or image bounding boxes (Box, TypeSafe only).
+Ask typed questions about text, JSON, and images from your terminal or AI agent.
+Decision connects to TypeSafe Jev, OpenAI Decisions, Gemini Decisions, and
+Cloudflare Clef through one request format and a common answer format.
+
+- **Noul:** estimate the probability that a statement is true.
+- **Choice:** select from named options, with probabilities for each.
+- **Score:** rate evidence against ordered levels.
+- **Box:** locate a region in an image (TypeSafe only).
+
+Batch questions over shared evidence in one provider request. Use readable CLI
+output, JSON for scripts, or the embedded STDIO MCP server. Extend the available
+providers with executable plugins written in any language.
 
 ## Install
 
@@ -17,396 +24,217 @@ or image bounding boxes (Box, TypeSafe only).
 brew install rolandkakonyi/tap/decision
 ```
 
-The executable includes all four built-in providers and supports executable
-provider plugins. It needs no Python or uv runtime. Upgrade with
-`brew upgrade rolandkakonyi/tap/decision`.
+Decision is a native executable with all four built-in providers included.
+Upgrade with `brew upgrade rolandkakonyi/tap/decision`.
 
-Native archives for macOS ARM64, Linux x86_64, and Windows x86_64 are available
-from [GitHub releases](https://github.com/rolandkakonyi/decision/releases).
-Extract the archive, verify its SHA-256 checksum, and place `decision`
+Downloadable archives for macOS ARM64, Linux x86_64, and Windows x86_64 are
+available from [GitHub releases](https://github.com/rolandkakonyi/decision/releases/latest).
+Verify the SHA-256 checksum, extract the archive, and put `decision`
 (`decision.exe` on Windows) on PATH. Keep the accompanying license notices.
-See [the build guide](docs/standalone.md) for platform constraints.
+See the [build guide](docs/standalone.md) for platform requirements.
 
-With Rust installed, build and install from a checkout:
+To install from a source checkout with Rust:
 
 ```bash
 cargo install --locked --path .
 ```
 
-## Quickstart
+## First query
 
 Validate a request without credentials or inference:
 
 ```bash
-decision noul 'Is this a greeting?' --state 'Hello' --dry-run
+decision noul 'Does this request a refund?' --state 'Please refund my order.' --dry-run
 ```
 
-For live queries, configure your selected provider's API key and omit
-`--dry-run`. See [provider settings](#provider-settings) for credentials,
-default models, and supported question types. Inference is billed by the provider.
-
-## Ask several questions together
+For a live query, export your provider's API key into the environment, select
+the provider, and omit `--dry-run`:
 
 ```bash
-decision run request.json
-decision run request.json --json
-decision ask --state-file state.json --questions-file questions.json
-decision noul 'Does this request a refund?' --state 'Please refund my order.'
+# Requires OPENAI_API_KEY in the environment.
+decision noul 'Does this request a refund?' --state 'Please refund my order.' \
+  --provider openai
 ```
 
-A request has one `state` and a `questions` object keyed by question IDs.
-Each question specifies `type` (`noul`, `choice`, `score`, or `box`),
-`instructions`, and any `criteria`. Mixed questions sharing state are sent in
-one provider request, and answers retain their IDs. See
-[examples/request.json](examples/request.json). `--dry-run` validates without
-inference. Human-readable output is the default, including when piped. Add
-`--json` before or after a query command to force JSON for scripts. The default
-changed in 0.4.0, so existing JSON consumers must add that flag. MCP responses
-stay structured. Diagnostics go to stderr; requests are not automatically retried.
+No model flag is required: each built-in provider has a default model.
+[Provider configuration](#provider-configuration) lists credentials and defaults.
+Decision does not load `.env` files automatically. Inference is billed by the
+selected provider.
 
-## Response stats
+Human-readable output is the default, including when piped. Add `--json` before
+or after a query command for structured output. Diagnostics go to stderr.
+Use `decision --help` or `decision COMMAND --help` for available options.
 
-Every successful query includes input/output token counts and elapsed request
-time, for single questions and mixed batches. Human-readable output ends with:
+## Questions and batches
+
+Ask a single question with its matching command:
+
+```bash
+decision choice 'Which team should handle this message?' \
+  --state 'I was charged twice.' \
+  --option billing='Payments and refunds' \
+  --option technical='Bugs and integrations'
+
+decision score 'How urgent is this issue?' \
+  --state 'The service is unavailable for all customers.' \
+  --level 'Can wait' --level 'Needs attention soon' --level 'Needs immediate attention'
+```
+
+Choice returns one of the offered option keys. Include an `other` option when
+none of the named options may apply. Score levels run from lowest to highest.
+
+For several questions about the same evidence, save a request as `request.json`:
+
+```json
+{
+  "state": {"message": "I was charged twice. Please refund the extra payment."},
+  "questions": {
+    "refund": {
+      "type": "noul",
+      "instructions": "Does the customer request a refund?"
+    },
+    "team": {
+      "type": "choice",
+      "instructions": "Which team handles this message?",
+      "criteria": {
+        "billing": "Payments and refunds",
+        "technical": "Bugs and integrations"
+      }
+    },
+    "blocking": {
+      "type": "score",
+      "instructions": "How much does the problem block the customer?",
+      "criteria": [
+        "Can continue normally",
+        "Can continue with inconvenience",
+        "Cannot continue"
+      ]
+    }
+  }
+}
+```
+
+```bash
+decision run request.json --json
+```
+
+Questions share `state` and retain their IDs in the answers. They are evaluated
+independently in one provider request; use the returned answers to make any
+conditional decisions. Add `--dry-run` to validate and preview the request.
+Use `decision run -` to read a request from stdin, or keep evidence and questions
+in separate files with `decision ask --state-file state.json --questions-file questions.json`.
+
+Decision validates the entire response before returning a batch. Missing or
+invalid answers fail the batch without partial results. Choice and Score
+probability maps must include every offered option and total 1 within 0.02.
+Requests are not automatically retried, redirected, or sent to a fallback provider.
+
+### Usage and timing
+
+Successful queries include the model, answers, token usage, and elapsed time.
+Readable output ends with batch statistics:
 
 ```text
 Usage: 120 input tokens, 12 output tokens
 Duration: 243.180 ms
 ```
 
-JSON output and MCP `structuredContent` include these fields alongside the
-model and answers:
+JSON output and MCP `structuredContent` include `usage.input_tokens`,
+`usage.output_tokens`, and `duration_ms`. Token counts come from the provider;
+unreported counts are `null`, while zero remains zero. Duration covers provider
+execution, image uploads, and response handling, excluding process startup and
+local file validation. Dry runs have no response statistics.
 
-```json
-{
-  "usage": {"input_tokens": 120, "output_tokens": 12},
-  "duration_ms": 243.18
-}
-```
+## Images
 
-Stats cover the whole batch. `duration_ms` is measured with a monotonic clock
-around provider execution, image upload, and response handling. Process startup
-and local file validation are excluded. Token counts come from the provider;
-unreported counts are `null` in JSON/MCP and shown as unavailable in readable
-output. Zero counts remain zero. Dry runs preview a request without inference
-and have no response stats.
-
-## Images and Box
+Attach PNG or JPEG images with repeatable `--image [NAME=]PATH` flags:
 
 ```bash
 decision choice 'Which breed is the dog in images.dog?' \
-  --image dog=dog.jpg \
+  --image dog=dog.jpg --provider openai \
   --option french_bulldog='French bulldog' \
   --option english_bulldog='English bulldog' \
-  --model jev-1.14.0
-
-decision noul 'Is the dog in images.dog a French bulldog?' \
-  --image dog=dog.jpg --model jev-1.14.0
-
-decision score 'How clearly is the face of the dog in images.dog visible?' \
-  --image dog=dog.jpg \
-  --level 'The face is not visible' \
-  --level 'The face is partly visible or obscured' \
-  --level 'The entire face is clearly visible' \
-  --model jev-1.14.0
+  --option other='Another breed or no identifiable dog'
 
 decision box 'Locate the dog in images.dog' \
-  --image dog=dog.jpg --model jev-1.14.0
+  --image dog=dog.jpg --provider typesafe
 ```
 
-The key before `=` in each `--option` is returned in the answer; the text after
-it describes that option. Add `--json` for machine-readable output. Choice
-always selects an offered option; add `--option other='Another breed or no identifiable dog'`
-if that outcome is allowed.
+Images appear under `state.images`. Existing object fields are preserved;
+scalar state is retained as `state.context`. Text state is optional when images
+are supplied. Unnamed images receive `image`, `image_2`, and so on; duplicate
+names are rejected.
 
-See the [worked examples](skills/decision/references/examples.md) for all four
-question types, multiple images, previews, `ask`, `run`, and MCP. The generated
-[dog request](skills/decision/references/dog-request.json) asks all four question
-types over one image; copy it beside your own `dog.jpg` before running it.
-
-`--image [NAME=]PATH` can be repeated. Images are added under `state.images`,
-keeping existing JSON object fields. Scalar state is retained as `state.context`;
-no text state is required when images are supplied. Unnamed files receive the
-names `image`, `image_2`, etc. Duplicate names fail explicitly.
-
-Batch JSON also accepts an `assets` map. Use unique references in state,
-question instructions, or criteria:
+Request files can include an `assets` map, with each asset reference used in
+state, instructions, or criteria:
 
 ```json
 {
-  "model": "jev-1.14.0",
   "state": {"photo": "<photo>"},
   "assets": {"<photo>": {"path": "photo.png"}},
   "questions": {
-    "present": {"type": "noul", "instructions": "Is there a package in photo?"},
-    "location": {"type": "box", "instructions": "Locate the package in photo"}
+    "present": {"type": "noul", "instructions": "Is there a package in photo?"}
   }
 }
 ```
 
-Paths in request JSON files are relative to that file; flag paths and paths in
-stdin are relative to the working directory. Every asset must be referenced.
-Images are sent once per batch: TypeSafe uses multipart uploads; OpenAI and
-Cloudflare use base64 data URLs; Gemini uses inline base64 content blocks.
+Paths in a request file are relative to that file. Flag paths and paths in stdin
+are relative to the working directory. Images are shared across the batch and
+are not resized. The common limits are 16 MiB per image and 32 MiB combined;
+provider limits may be stricter.
 
-For MCP, replace path descriptors with `{"data_base64": "...", "format": "png"}`.
-MCP accepts base64 bytes only, never paths on the server's filesystem. Format is
-optional and inferred; png, jpg, and jpeg are accepted. Base64 uses the standard
-alphabet without whitespace or a data: prefix.
+MCP accepts image bytes only, never server filesystem paths. Replace a path
+descriptor with `{"data_base64": "...", "format": "png"}`. Use standard base64
+without whitespace or a `data:` prefix. Format is optional and inferred from
+the bytes; `png`, `jpg`, and `jpeg` are accepted.
 
-In TypeSafe mode, the CLI automatically sends `TypeSafe-Danger-Zone-Images: true`
-for image or Box requests. TypeSafe currently marks these features experimental; Box requires
-Jev 1.14. The CLI checks PNG/JPEG signatures and 16 MiB per file / 32 MiB combined.
-The provider validates decoding, dimensions (currently 280-1568 pixels per side),
-and expanded-request limits. Images are not resized. See the
-[official image docs](https://docs.typesafe.ai/images) and
-[examples/images.json](examples/images.json).
+TypeSafe image and Box requests use its experimental image API; Decision sends
+the required opt-in header automatically. TypeSafe validates image decoding
+and dimensions of 280–1568 pixels per side. A Box answer
+can locate a region even when the requested object is absent; pair it with a
+Noul presence question when that distinction matters.
 
-## Mix Noul, Box, and Choice in one request
+See the [worked examples](skills/decision/references/examples.md) for all four
+question types, multiple images, and mixed CLI/MCP batches. Ready-to-run request
+files are included for [TypeSafe](skills/decision/references/dog-request.json),
+[OpenAI](skills/decision/references/openai-dog-request.json),
+[Gemini](skills/decision/references/gemini-dog-request.json), and
+[Cloudflare](skills/decision/references/cloudflare-dog-request.json).
+Copy an image request beside your own `dog.jpg` before running it.
 
-Every named question can have a different type. Save the following as
-`dog-mixed-questions.json`:
+## Provider configuration
 
-```json
-{
-  "dog_present": {
-    "type": "noul",
-    "instructions": "Is a dog visible in images.dog?"
-  },
-  "dog_location": {
-    "type": "box",
-    "instructions": "Locate the dog in images.dog"
-  },
-  "breed": {
-    "type": "choice",
-    "instructions": "Which breed is the dog in images.dog?",
-    "criteria": {
-      "french_bulldog": "French bulldog",
-      "english_bulldog": "English bulldog"
-    }
-  }
-}
-```
+Choose a provider with `--provider NAME` or `DECISION_PROVIDER`. TypeSafe is the
+default. All built-in providers support Noul, Choice, and Score; TypeSafe also
+supports Box.
 
-With the CLI, supply the questions and image separately:
+- **[TypeSafe](https://docs.typesafe.ai/images)** (`typesafe`): `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY`.
+  Default model: `TYPESAFE_DEFAULT_MODEL`, then `jev-latest`.
+- **[OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions)** (`openai`): `OPENAI_API_KEY`.
+  Default model: `gpt-6-luna`. Up to 400 questions, 2–255 Choice options,
+  and 2–10 Score levels per question.
+- **[Gemini Decisions](https://aistudio.google.com/docs/decisions-api)** (`gemini`): `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+  Default model: `gemini-decision-1`. Up to 1000 questions, 2–255 Choice
+  options, and 2–255 Score levels per question.
+- **[Cloudflare Clef](https://developers.cloudflare.com/workers-ai/models/clef/)** (`cloudflare`): `CLOUDFLARE_API_TOKEN` or
+  `CLOUDFLARE_AUTH_TOKEN`, plus `CLOUDFLARE_ACCOUNT_ID`.
+  Default model: `clef`; select `clef-flash` with `--model`.
+  Up to 64 questions, 2–255 Choice options, and 2–10 Score levels per question.
+  Images are limited to four, 4 MiB each and 8 MiB combined, with a 13 MiB
+  encoded request limit.
 
-```bash
-decision ask --questions-file dog-mixed-questions.json \
-  --image dog=dog.jpg --model jev-1.14.0
-```
+Flags override environment settings. For CLI queries, model selection is
+`--model`, then `DECISION_MODEL`, then the request's `model`, then the provider
+default. `--account-id` overrides `DECISION_ACCOUNT_ID`, then
+`CLOUDFLARE_ACCOUNT_ID` for Cloudflare.
 
-Or copy [dog-mixed-request.json](skills/decision/references/dog-mixed-request.json)
-beside your `dog.jpg` and use the complete request file:
+### Compatible endpoints and credentials
 
-```bash
-decision run dog-mixed-request.json --json
-```
-
-Both send **one provider request**, upload the image once, and retain the answer
-IDs `dog_present`, `dog_location`, and `breed`. CLI output is human-readable by
-default; add `--json` to either command for structured answers. Add `--dry-run`
-to preview without inference. Image paths inside request JSON are relative to
-that JSON file; `--image` paths are relative to your working directory.
-
-For MCP, call `evaluate` once with this input. Replace the placeholder with
-standard base64 of your PNG/JPEG bytes, without whitespace or a `data:` prefix:
-
-```json
-{
-  "model": "jev-1.14.0",
-  "state": {"images": {"dog": "<dog-photo>"}},
-  "assets": {
-    "<dog-photo>": {"data_base64": "REPLACE_WITH_BASE64_IMAGE_BYTES"}
-  },
-  "questions": {
-    "dog_present": {
-      "type": "noul",
-      "instructions": "Is a dog visible in images.dog?"
-    },
-    "dog_location": {
-      "type": "box",
-      "instructions": "Locate the dog in images.dog"
-    },
-    "breed": {
-      "type": "choice",
-      "instructions": "Which breed is the dog in images.dog?",
-      "criteria": {
-        "french_bulldog": "French bulldog",
-        "english_bulldog": "English bulldog"
-      }
-    }
-  }
-}
-```
-
-MCP returns `structuredContent.answers` keyed by the same three IDs and accepts
-base64 assets only. All questions are independent; use `dog_present` to decide
-whether to use the location and breed answers after receiving the batch. Box
-returns a location even when the dog is absent, and Choice selects an offered
-breed. Add an `other` criterion when another breed or no dog is a valid outcome.
-
-## Provider settings
-
-Set `TYPESAFE_API_KEY` or `TYPESAFEAI_API_KEY` for the default TypeSafe host.
-Choose the wire API with `--provider typesafe` (the default),
-`--provider openai`, `--provider cloudflare`, or `--provider gemini`, or set `DECISION_PROVIDER`. All providers use the same
-question files and normalized answer format.
-
-Answers are validated against the request before any batch is returned.
-Choice and Score probability maps must contain all offered options and sum to
-1 within 0.02, allowing aggregate rounding error. Invalid answers fail the whole
-batch. Provider redirects are not followed.
-
-### OpenAI Decisions
-
-With `OPENAI_API_KEY` exported into the command's environment:
-
-```bash
-decision noul 'Does the message request a refund?' --state 'Please refund my order.' \
-  --provider openai --model gpt-6-luna
-
-decision choice 'Which breed is the dog in images.dog?' \
-  --image dog=dog.jpg --provider openai --model gpt-6-luna \
-  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
-```
-
-Copy [openai-dog-questions.json](skills/decision/references/openai-dog-questions.json)
-for a mixed Noul, Choice, and Score batch:
-
-```bash
-decision ask --questions-file openai-dog-questions.json \
-  --image dog=dog.jpg --provider openai --model gpt-6-luna --json
-```
-
-Or copy [openai-dog-request.json](skills/decision/references/openai-dog-request.json)
-beside your `dog.jpg`:
-
-```bash
-decision run openai-dog-request.json --provider openai --model gpt-6-luna --json
-```
-
-The adapter calls `POST /v1/decisions` directly over HTTPS. It maps
-Noul to `predicate`, named Choice criteria to `choices`, and ordered Score
-criteria to `levels`. Answers retain their question IDs and the usual
-`noul`/`choice`/`score` types. Objects and arrays of objects become `input_json`
-evidence; other state values become text. Images are sent once as shared
-base64 data URLs, paired with their reference names. Structured criterion
-descriptions are serialized as JSON text; Noul true/false criteria are included
-in its instructions.
-
-OpenAI currently supports `gpt-6-luna`, 1–400 questions, 2–255 choices, and
-2–10 score levels. **Box is unsupported**: a batch containing Box fails before
-any provider call. Refusals, duplicate/missing IDs, or invalid answers fail the
-whole batch without returning partial judgments. No automatic retries or
-provider fallback are used. See the [official guide](https://developers.openai.com/api/docs/guides/decisions)
-and [API reference](https://developers.openai.com/api/reference/resources/decisions/methods/create).
-
-The OpenAI base URL defaults to `https://api.openai.com/v1`, overridable via
-`--base-url`, `DECISION_BASE_URL`, or `OPENAI_BASE_URL`, in that order. The default
-model is `gpt-6-luna` when no model is selected. `.env.local` is not loaded
-automatically. Export credentials into the environment before launching the command.
-
-### Gemini Decisions
-
-Export `GEMINI_API_KEY` into the command's environment, then select Gemini:
-
-```bash
-decision noul 'Does this request a refund?' --state 'Please refund my order.' \
-  --provider gemini
-decision choice 'Which breed is the dog in images.dog?' \
-  --image dog=dog.jpg --provider gemini \
-  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
-```
-
-Noul, Choice, and Score use the shared question format and normalized answers.
-For mixed batches, copy
-[gemini-dog-questions.json](skills/decision/references/gemini-dog-questions.json)
-and pass it to `decision ask --questions-file gemini-dog-questions.json --image dog=dog.jpg --provider gemini --json`.
-Alternatively, copy
-[gemini-dog-request.json](skills/decision/references/gemini-dog-request.json)
-beside your `dog.jpg` and run `decision run gemini-dog-request.json --provider gemini --json`.
-
-The adapter sends one POST to `/v1beta/decisions` with the default model
-`gemini-decision-1`. It serializes JSON state as text, labels each named image,
-and sends its bytes once as an inline base64 content block. Common Noul criteria
-`true`/`false` become `true_description`/`false_description`. Structured criterion
-descriptions become JSON text; absent Choice descriptions become empty strings.
-Token counts map from Gemini's `total_input_tokens`/`total_output_tokens` into
-the common `usage` fields. A zero output count remains zero.
-
-Local checks enforce up to 1000 questions; IDs of 1–64 ASCII letters, digits,
-underscores, or hyphens; 2–255 Choice options; and 2–255 nonempty Score levels.
-Option IDs allow 1–128 characters with internal ASCII spaces, without edge
-spaces, control characters, or non-ASCII spaces. The harness accepts PNG/JPEG
-images up to 16 MiB each and 32 MiB combined; Gemini enforces its context and
-media limits. Box is rejected before network access. Audio, video, and PDFs
-are not accepted by the harness. Invalid, incomplete, or safety-blocked responses
-fail the entire batch without partial judgments, redirects, or retries. See the
-[official Decisions guide](https://aistudio.google.com/docs/decisions-api).
-
-The base URL defaults to `https://generativelanguage.googleapis.com/v1beta`,
-overridable via `--base-url`, `DECISION_BASE_URL`, or `GEMINI_BASE_URL`, in that
-order; the adapter appends `/decisions`. `--model` and `DECISION_MODEL` override
-the default model. At the official HTTPS host, `GEMINI_API_KEY` takes precedence
-over `GOOGLE_API_KEY`; `DECISION_API_KEY` takes precedence over both. An explicit
-`--api-key-env` / `DECISION_API_KEY_ENV` selects only that variable. Custom hosts
-require a selected credential variable or `DECISION_API_KEY`.
-
-### Cloudflare Clef
-
-Use a Cloudflare Workers AI API token and your account's
-32-character ID. Export `CLOUDFLARE_API_TOKEN` (or `CLOUDFLARE_AUTH_TOKEN`) and
-`CLOUDFLARE_ACCOUNT_ID`, then run:
-
-```bash
-decision choice 'Which breed is the dog in images.dog?' \
-  --image dog=dog.jpg --provider cloudflare --model clef-flash \
-  --option french_bulldog='French bulldog' --option english_bulldog='English bulldog'
-```
-
-`clef` is the default; `clef-flash`, `@cf/cloudflare/clef`, and
-`@cf/cloudflare/clef-flash` are also accepted. Noul, Choice, and Score share the
-same request format and response stats as the other providers. For a mixed
-batch, copy [cloudflare-dog-questions.json](skills/decision/references/cloudflare-dog-questions.json):
-
-```bash
-decision ask --questions-file cloudflare-dog-questions.json \
-  --image dog=dog.jpg --provider cloudflare --model clef-flash --json
-```
-
-Or copy [cloudflare-dog-request.json](skills/decision/references/cloudflare-dog-request.json)
-beside `dog.jpg` and run `decision run cloudflare-dog-request.json --provider cloudflare --json`.
-Both send one request with one image for all three questions.
-
-The adapter calls `/client/v4/accounts/ACCOUNT_ID/ai/run/@cf/cloudflare/MODEL`
-and validates the Workers AI response envelope before returning answers.
-Limits: 1–64 questions; IDs of 1–100 letters, digits, underscores, dots, or
-hyphens; 2–255 choices; 2–10 score levels. **Box is unsupported** and fails
-before sending a request. Up to 4 PNG/JPEG images are allowed, 4 MiB each and
-8 MiB combined; the encoded request body must fit within 13 MiB. Cloudflare
-enforces image decoding and the 16-megapixel limit. Images are sent in asset
-order, with `state._decision_image_references` mapping reference names to
-1-based positions. That field is reserved for image requests; scalar state
-is preserved under `context`. See the [official Clef docs](https://developers.cloudflare.com/workers-ai/models/clef/)
-and [Clef Flash docs](https://developers.cloudflare.com/workers-ai/models/clef-flash/).
-
-`--account-id` overrides `DECISION_ACCOUNT_ID`, then `CLOUDFLARE_ACCOUNT_ID`.
-The base URL defaults to `https://api.cloudflare.com/client/v4`, overridable
-via `--base-url`, `DECISION_BASE_URL`, or `CLOUDFLARE_BASE_URL`. At the default
-root, the adapter adds the account's `/accounts/ACCOUNT_ID/ai/run` path.
-A custom base URL must be a **Workers AI run root**, such as an account's
-`.../ai/run` or an AI Gateway's `.../workers-ai`; the adapter appends
-`/@cf/cloudflare/MODEL`. Custom hosts require `--api-key-env KEY_VARIABLE`
-(or `DECISION_API_KEY_ENV`) or `DECISION_API_KEY`. Account IDs and credentials
-are server configuration in MCP and cannot be overridden by tool callers.
-Dry runs require neither an account ID nor credentials. Cloudflare's
-[REST setup guide](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)
-recommends its Workers AI token template; custom tokens require Workers AI
-Read and Edit permissions.
-
-### Other compatible hosts
-
-Select the matching wire API and override routing and credentials:
+Use `--base-url` or `DECISION_BASE_URL` to select another endpoint. Each built-in
+provider also accepts its own base URL variable: `TYPESAFE_BASE_URL`,
+`OPENAI_BASE_URL`, `GEMINI_BASE_URL`, or `CLOUDFLARE_BASE_URL`, with lower priority.
+The endpoint must implement the selected provider's Decisions or System One API;
+a chat-completions endpoint alone is insufficient.
 
 ```bash
 export DECISION_PROVIDER=openai
@@ -416,103 +244,95 @@ export DECISION_MODEL=provider-model
 decision run request.json
 ```
 
-`--provider`, `--base-url`, `--api-key-env`, and `--model` override those settings. The key
-selector is the name of an environment variable holding the credential, never
-the credential itself. `DECISION_API_KEY` can hold an explicitly selected key
-directly. Default provider keys are used only on the matching provider's official
-HTTPS host. Other hosts require an explicit key selector or `DECISION_API_KEY`.
-For `typesafe`, the base URL also honors `TYPESAFE_BASE_URL`; the execution model
-defaults to `TYPESAFE_DEFAULT_MODEL`, then `jev-latest`. Compatible hosts must implement the selected Decisions
-or System One API; a chat-completions endpoint alone does not suffice.
+`--api-key-env NAME` or `DECISION_API_KEY_ENV` selects the environment variable
+holding the credential, not the credential itself. An explicit selector uses
+only that variable. Without a selector, `DECISION_API_KEY` takes priority over
+provider-specific keys. Provider-specific credentials are used only at the
+matching official HTTPS host on port 443; custom hosts require a selector or
+`DECISION_API_KEY`.
 
-### Provider extensions
+A custom Cloudflare base URL must be a Workers AI run root, such as an account's
+`.../ai/run` or an AI Gateway's `.../workers-ai`. Decision appends
+`/@cf/cloudflare/MODEL`.
 
-Install a provider package containing `decision-provider.json`, then select
-its registered name. The command can be written in any language:
+## Runtime provider plugins
+
+Install a package containing `decision-provider.json`, then select its
+registered provider name:
 
 ```bash
 decision providers install /path/to/provider-package
 decision providers list
 decision noul 'Is this a greeting?' --state 'Hello' --provider acme
+decision providers remove acme
 ```
 
-Local directories/manifests, pinned Git repositories, and checksum-verified
-HTTPS archives are supported. Providers are trusted programs with normal user
-permissions. Authors own packaging and setup; install the declared runtimes
-before installing a plugin. Setup runs only during explicit installation or
-update. Evaluation never installs dependencies.
+Plugins are trusted programs with normal user permissions, written in any
+language. Authors own packaging and setup; users supply declared runtimes.
+Install from a local directory or manifest, a Git repository with an explicit
+revision, or an HTTPS archive with a SHA-256 checksum. Setup runs only during
+explicit installation or update, never during evaluation. Plugin dry runs may
+launch the provider's validation commands, without inference.
 
-Personal registrations are loaded by default. Team configurations require an
-explicit `--project-config FILE`; the working directory does not activate
-plugins. An inference MCP server selects one provider at startup and retains
-its installed artifact until restart. `decision mcp --management` instead
-exposes installation, listing, and removal tools.
-
-The same model/base-URL/key-selector overrides and common validation apply to
-extensions. Exports do not load external providers; forward extension-specific
-variable names with `decision plugin --env-var NAME` for MCP integration.
-See [the provider protocol](docs/provider-plugins.md) for package and message
-formats. This is separate from the generated Codex plugin below.
-
+Personal registrations load by default. Team registrations require explicit
+`--project-config FILE`; the working directory does not activate plugins.
 Use repeatable `--disable-provider NAME` flags to exclude installed or built-in
-providers for one invocation:
+providers for one invocation. Selecting a disabled provider fails before launch.
+
+See the [provider protocol](docs/provider-plugins.md) for package manifests,
+installation sources, configuration, and message formats. These provider
+programs are separate from the Codex integration below.
+
+## MCP integration
+
+Register the executable with an MCP client, for example Codex:
 
 ```bash
-decision run request.json --provider acme --disable-provider other --disable-provider openai
+codex mcp add decision -- decision mcp --provider openai
 ```
 
-Selecting a disabled provider, including through `DECISION_PROVIDER`, exits with
-an input error before loading it or sending a request. There is no fallback or
-persistent installation change. For MCP, exclusions are startup flags on
-`decision mcp`; tool arguments cannot change them.
+Ensure the selected credential variables are available to the server through
+your client's environment configuration. Use an absolute executable path if
+`decision` is not on the client's PATH.
 
-## MCP in the same command
+The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns
+structured answers, model, usage, and `duration_ms`. Each server uses one
+configured provider and advertises its supported question types and limits.
+Provider routing, account ID, credential selection, and timeout are fixed at
+startup; callers can override only the model. Installed provider artifacts
+remain pinned until the server restarts. Stdout is reserved for MCP messages.
+
+For explicit plugin administration, start `decision mcp --management`. This mode
+exposes only provider installation, listing, and removal tools.
+
+## Agent skills and Codex plugins
+
+Export a portable Agent Skill with command references, schemas, and examples:
 
 ```bash
-codex mcp add decision -- /absolute/path/to/decision mcp
-codex mcp add decision-openai -- /absolute/path/to/decision mcp --provider openai
-codex mcp add decision-cloudflare -- /absolute/path/to/decision mcp --provider cloudflare
-codex mcp add decision-gemini -- /absolute/path/to/decision mcp --provider gemini
+decision skill --output skills/decision
 ```
 
-The `evaluate` tool accepts `{state, questions, model?, assets?}` and returns structured
-answers, model, usage, and `duration_ms` with an output schema. Forward the selected credential
-variable and its selector in Codex's MCP environment settings. Provider routing,
-account ID, key selection, and timeout are fixed server configuration; tool callers can
-override only the model. Stdout is reserved for protocol messages in MCP mode.
-OpenAI, Cloudflare, and Gemini servers advertise only Noul, Choice, and Score and their provider limits.
-Forward `OPENAI_API_KEY` for the official OpenAI host, or the selected credential
-variable and `DECISION_API_KEY_ENV` for another host.
-For Cloudflare, forward `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-For Gemini, forward `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for the official host.
+Copy the exported directory into your agent's skill directory. Install the
+`decision` executable separately on each host.
 
-## Generate a Codex plugin
-
-Choose how Codex invokes decision:
+For Codex, generate a local plugin marketplace with either CLI or MCP integration:
 
 ```bash
-decision plugin --output "$PWD/.state/decision-cli" --integration cli
 decision plugin --output "$PWD/.state/decision-mcp" --integration mcp
-```
-
-Both exports include the generated skill, examples, and schemas. **CLI** mode
-uses the installed `decision` command and declares no MCP server. **MCP** mode
-(the default) also declares a STDIO server running `decision mcp` and directs
-the skill to its `evaluate` tool. The executable must be installed separately
-on each host; a plugin export does not bundle a binary or dependencies.
-
-The output is a local marketplace containing `plugins/decision/`. To install
-the MCP export explicitly:
-
-```bash
 codex plugin marketplace add "$PWD/.state/decision-mcp"
 codex plugin add decision@decision-local
 ```
 
-Start a new Codex session. Set provider/model/base URL/key-selector variables in
-Codex's environment; standard credential and Cloudflare account-ID variable
-names are forwarded to the MCP process. Values are never written to the export.
-For a custom key or a native binary outside PATH:
+MCP mode includes the skill and declares a server running `decision mcp`.
+Use `--integration cli` for a skill that calls the installed command without an
+MCP server. Both modes use `decision@decision-local`; choose one per host.
+Start a new Codex session after installation.
+
+Exports require no credentials or provider access. They forward standard
+environment variable names to MCP without storing their values. Configure
+provider, model, and credentials in Codex's environment. For a custom credential
+variable or executable location:
 
 ```bash
 decision plugin --output "$PWD/.state/decision-mcp" --integration mcp \
@@ -520,37 +340,11 @@ decision plugin --output "$PWD/.state/decision-mcp" --integration mcp \
 ```
 
 Set `DECISION_API_KEY_ENV=MY_PROVIDER_KEY` and `MY_PROVIDER_KEY` in Codex's
-environment. `--env-var` is repeatable and applies only to MCP. The generator
-ignores current environment values and does not load `.env` files, contact a
-provider, register the marketplace, or change Codex settings.
+environment. `--env-var` is repeatable. See the
+[plugin guide](skills/decision/references/plugin.md) for installation, updates,
+and export verification.
 
-Repeat the original export options with `--check` to verify freshness. Switching
-the same output from MCP to CLI removes the old MCP declaration. Regenerate,
-run `codex plugin marketplace upgrade decision-local`, then
-`codex plugin add decision@decision-local` to refresh, and start a new session.
-Both modes use the ID `decision@decision-local`; select one output per host.
-The package version changes when generated content or launch settings change.
-Exports refuse unmanaged files and symlinks. See the generated
-[plugin guide](skills/decision/references/plugin.md) for the complete workflow.
-
-## Generated skill
-
-```bash
-decision skill                         # Markdown to stdout, no API call
-decision skill --output skills/decision
-decision skill --output skills/decision --check
-```
-
-The generator owns `skills/decision/SKILL.md` and its example, input schema,
-and command reference. The schema and command reference come from the running
-tool. Edit `src/skill.rs`, `src/templates/`, and the CLI definitions, then regenerate.
-CI rejects a stale generated export. No key or provider access is required.
-
-Installing the skill does not install the executable. The export is portable:
-copy it into a compatible agent's skill directory, and install `decision` on
-that host separately.
-
-## Development
+## Development and contributing
 
 ```bash
 git clone https://github.com/rolandkakonyi/decision.git
@@ -562,21 +356,15 @@ target/debug/decision skill --output skills/decision --check
 uv run --locked python -m unittest discover -s tests -v
 ```
 
-Rust owns the executable and all provider transports. Python and uv are test
-tooling only. Tests use local fixtures without inference. Do not commit
-credentials, environment files, build outputs, or executables. See
-[AGENTS.md](AGENTS.md) for contracts and [the build guide](docs/standalone.md)
-for archive verification.
+Rust builds the executable; Python and uv are integration-test tooling. Tests
+use local fixtures without paid inference. CI exercises native macOS, Linux,
+and Windows builds, packaged artifacts, and real Codex plugin installation.
 
-CI builds and tests native macOS, Linux, and Windows binaries, including CLI,
-MCP, provider fixtures, runtime plugins, and packaged artifacts. A separate
-Linux job verifies real Codex plugin installation. Cargo dependencies are
-recorded in `Cargo.lock`; Python test dependencies are recorded in `uv.lock`.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and release workflows,
-and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, checks, generated-skill
+maintenance, and releases; the [build guide](docs/standalone.md) for archive
+verification; and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## License
 
 Decision is licensed under the [MIT license](LICENSE). Provider accounts and
-inference usage are subject to each provider's separate terms and pricing.
+inference usage are subject to each provider's terms and pricing.
